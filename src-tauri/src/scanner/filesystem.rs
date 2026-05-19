@@ -1,5 +1,7 @@
 use crate::error::AppError;
+use serde::Serialize;
 
+#[derive(Debug, Clone, Serialize)]
 pub struct ScannedFile {
     pub path: String,
     pub filename: String,

@@ -21,6 +21,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(pool)
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let _ = app;
             Ok(())
