@@ -1,0 +1,32 @@
+[package]
+name = "wavebase"
+version = "0.1.0"
+description = "A fast, lightweight audio library manager for music producers"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "wavebase_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.24"
+symphonia = { version = "0.5", features = ["all"] }
+rodio = { version = "0.17", features = ["symphonia-all"] }
+stratum-dsp = "1"
+notify = "6"
+walkdir = "2"
+thiserror = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
