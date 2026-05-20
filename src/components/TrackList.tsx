@@ -83,6 +83,7 @@ export default function TrackList({ tracks, selectedId, onSelect, onDoubleClick 
                     key={stem.id}
                     className={`row stem${selectedId === stem.id ? ' selected' : ''}`}
                     onClick={() => onSelect(stem.id)}
+                    onDoubleClick={() => onDoubleClick?.(stem.id)}
                   >
                     <div />
                     <div className="dot orange" style={{ width: 5, height: 5 }} />

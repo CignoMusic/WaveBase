@@ -15,9 +15,11 @@ interface PlaybackStatus {
 
 interface PlayerBarProps {
   selectedTrack: Track | null;
+  onNext?: () => void;
+  onPrev?: () => void;
 }
 
-export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
+export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
@@ -106,17 +108,27 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
     }
   };
 
-  const handleStop = async () => {
-    try {
-      const s = await invoke<PlaybackStatus>('stop_audio');
-      setStatus(s);
-    } catch (e) {
-      console.error('Stop failed:', e);
+  const handlePrev = async () => {
+    if (!selectedTrack) return;
+    if (status.playing || status.position > 0.5) {
+      try {
+        const s = await invoke<PlaybackStatus>('play_audio', { path: selectedTrack.path });
+        setStatus(s);
+      } catch (e) {
+        console.error('Restart failed:', e);
+      }
+    } else {
+      onPrev?.();
     }
+  };
+
+  const handleNext = () => {
+    onNext?.();
   };
 
   const handleVolume = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const vol = parseFloat(e.target.value) / 100;
+    setStatus((prev) => ({ ...prev, volume: vol }));
     try {
       await invoke('set_volume', { volume: vol });
     } catch (err) {
@@ -124,8 +136,10 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
     }
   };
 
-  const time = formatTime(status.position);
   const isPlaying = status.playing;
+  const time = formatTime(status.position);
+  const total = formatTime(status.duration);
+  const volPct = Math.round(status.volume * 100);
   const metaText = selectedTrack
     ? `${selectedTrack.bpm ?? '—'} BPM · ${selectedTrack.key} · ${selectedTrack.artists}`
     : '';
@@ -139,7 +153,7 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
         </div>
         <div className="sep" />
         <div className="t-controls">
-          <button className="t-btn" onClick={handleStop} title="Stop">
+          <button className="t-btn" onClick={handlePrev} title="Previous / Restart">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
               <rect x="1.5" y="2" width="2" height="10" rx="0.5" />
               <path d="M12.5 2L5.5 7L12.5 12V2Z" />
@@ -157,7 +171,7 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
               </svg>
             )}
           </button>
-          <button className="t-btn" title="Skip forward">
+          <button className="t-btn" onClick={handleNext} title="Next track">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
               <rect x="10.5" y="2" width="2" height="10" rx="0.5" />
               <path d="M1.5 2L8.5 7L1.5 12V2Z" />
@@ -165,7 +179,7 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
           </button>
         </div>
         <div className="sep" />
-        <div className="time-counter">{time}</div>
+        <div className="time-counter">{time} / {total}</div>
         <div className="vol-row">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 5H1v4h2l4 3V2L3 5Z" fill="currentColor" />
@@ -177,9 +191,12 @@ export default function PlayerBar({ selectedTrack }: PlayerBarProps) {
             className="vol-slider"
             min="0"
             max="100"
-            defaultValue="80"
+            value={volPct}
             onChange={handleVolume}
           />
+          <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 32, textAlign: 'right' }}>
+            {volPct}%
+          </span>
         </div>
       </div>
       <div className="waveform-panel">

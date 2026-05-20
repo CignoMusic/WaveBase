@@ -51,6 +51,40 @@ function App() {
     }
   };
 
+  const handlePlayTrack = useCallback(async (id: string) => {
+    const flat = getFlatTracks();
+    const track = flat.find((t) => t.id === id);
+    if (!track) return;
+    try {
+      await invoke('play_audio', { path: track.path });
+    } catch (e) {
+      console.error('Play failed:', e);
+    }
+  }, [getFlatTracks]);
+
+  const handleDoubleClickTrack = useCallback((id: string) => {
+    setSelectedId(id);
+    handlePlayTrack(id);
+  }, [handlePlayTrack]);
+
+  const handleNextTrack = useCallback(() => {
+    const flat = getFlatTracks();
+    if (flat.length === 0) return;
+    const idx = flat.findIndex((t) => t.id === selectedId);
+    const next = idx < flat.length - 1 ? flat[idx + 1] : flat[0];
+    setSelectedId(next.id);
+    handlePlayTrack(next.id);
+  }, [getFlatTracks, selectedId, handlePlayTrack]);
+
+  const handlePrevTrack = useCallback(() => {
+    const flat = getFlatTracks();
+    if (flat.length === 0) return;
+    const idx = flat.findIndex((t) => t.id === selectedId);
+    const prev = idx > 0 ? flat[idx - 1] : flat[flat.length - 1];
+    setSelectedId(prev.id);
+    handlePlayTrack(prev.id);
+  }, [getFlatTracks, selectedId, handlePlayTrack]);
+
   return (
     <div className="app">
       <Titlebar onScanDirectory={handleScanDirectory} />
@@ -63,8 +97,13 @@ function App() {
           tracks={tracks}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          onDoubleClick={handleDoubleClickTrack}
         />
-        <PlayerBar selectedTrack={selectedTrack} />
+        <PlayerBar
+          selectedTrack={selectedTrack}
+          onNext={handleNextTrack}
+          onPrev={handlePrevTrack}
+        />
       </div>
     </div>
   );
