@@ -25,6 +25,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const progressFillRef = useRef<HTMLDivElement>(null);
   const waveRef = useRef<number[] | null>(null);
   const pollRef = useRef<number>(0);
+  const prevRestartedRef = useRef(false);
   const [status, setStatus] = useState<PlaybackStatus>({
     playing: false,
     paused: false,
@@ -100,6 +101,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
 
   const handleTogglePlay = async () => {
     if (!selectedTrack) return;
+    prevRestartedRef.current = false;
     try {
       const s = await invoke<PlaybackStatus>('toggle_playback', { path: selectedTrack.path });
       setStatus(s);
@@ -110,7 +112,15 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
 
   const handlePrev = async () => {
     if (!selectedTrack) return;
+
+    if (prevRestartedRef.current) {
+      prevRestartedRef.current = false;
+      onPrev?.();
+      return;
+    }
+
     if (status.playing || status.position > 0.5) {
+      prevRestartedRef.current = true;
       try {
         const s = await invoke<PlaybackStatus>('play_audio', { path: selectedTrack.path });
         setStatus(s);
@@ -123,6 +133,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   };
 
   const handleNext = () => {
+    prevRestartedRef.current = false;
     onNext?.();
   };
 

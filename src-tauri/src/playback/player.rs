@@ -20,11 +20,11 @@ pub struct PlaybackStatus {
 }
 
 enum Command {
-    Play(String),
-    Toggle(String),
-    Pause,
-    Resume,
-    Stop,
+    Play(String, mpsc::Sender<()>),
+    Toggle(String, mpsc::Sender<()>),
+    Pause(mpsc::Sender<()>),
+    Resume(mpsc::Sender<()>),
+    Stop(mpsc::Sender<()>),
     SetVolume(f32),
 }
 
@@ -65,37 +65,42 @@ impl AudioPlayer {
     }
 
     pub fn play(&self, path: &str) -> Result<PlaybackStatus, AppError> {
-        self.cmd_tx.send(Command::Play(path.to_string()))
+        let (ack_tx, ack_rx) = mpsc::channel();
+        self.cmd_tx.send(Command::Play(path.to_string(), ack_tx))
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
-        thread::sleep(Duration::from_millis(15));
+        ack_rx.recv().ok();
         Ok(self.status())
     }
 
     pub fn toggle(&self, path: &str) -> Result<PlaybackStatus, AppError> {
-        self.cmd_tx.send(Command::Toggle(path.to_string()))
+        let (ack_tx, ack_rx) = mpsc::channel();
+        self.cmd_tx.send(Command::Toggle(path.to_string(), ack_tx))
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
-        thread::sleep(Duration::from_millis(15));
+        ack_rx.recv().ok();
         Ok(self.status())
     }
 
     pub fn pause(&self) -> Result<PlaybackStatus, AppError> {
-        self.cmd_tx.send(Command::Pause)
+        let (ack_tx, ack_rx) = mpsc::channel();
+        self.cmd_tx.send(Command::Pause(ack_tx))
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
-        thread::sleep(Duration::from_millis(10));
+        ack_rx.recv().ok();
         Ok(self.status())
     }
 
     pub fn resume(&self) -> Result<PlaybackStatus, AppError> {
-        self.cmd_tx.send(Command::Resume)
+        let (ack_tx, ack_rx) = mpsc::channel();
+        self.cmd_tx.send(Command::Resume(ack_tx))
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
-        thread::sleep(Duration::from_millis(10));
+        ack_rx.recv().ok();
         Ok(self.status())
     }
 
     pub fn stop(&self) -> Result<PlaybackStatus, AppError> {
-        self.cmd_tx.send(Command::Stop)
+        let (ack_tx, ack_rx) = mpsc::channel();
+        self.cmd_tx.send(Command::Stop(ack_tx))
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
-        thread::sleep(Duration::from_millis(10));
+        ack_rx.recv().ok();
         let mut s = self.state.lock().unwrap();
         s.playing = false;
         s.paused = false;
@@ -145,7 +150,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                Command::Play(path) => {
+                Command::Play(path, ack) => {
                     if let Some(old) = sink.take() {
                         old.stop();
                     }
@@ -165,8 +170,9 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             }
                         }
                     }
+                    let _ = ack.send(());
                 }
-                Command::Toggle(path) => {
+                Command::Toggle(path, ack) => {
                     if file_path == path && !file_path.is_empty() && pause_start.is_some() {
                         if let Some(ref s) = sink {
                             s.play();
@@ -201,14 +207,16 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             }
                         }
                     }
+                    let _ = ack.send(());
                 }
-                Command::Pause => {
+                Command::Pause(ack) => {
                     if let Some(ref s) = sink {
                         s.pause();
                     }
                     pause_start = Some(Instant::now());
+                    let _ = ack.send(());
                 }
-                Command::Resume => {
+                Command::Resume(ack) => {
                     if let Some(ref s) = sink {
                         s.play();
                     }
@@ -216,8 +224,9 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                         total_paused += ps.elapsed().as_secs_f64();
                     }
                     pause_start = None;
+                    let _ = ack.send(());
                 }
-                Command::Stop => {
+                Command::Stop(ack) => {
                     if let Some(s) = sink.take() {
                         s.stop();
                     }
@@ -226,6 +235,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                     started_at = None;
                     total_paused = 0.0;
                     pause_start = None;
+                    let _ = ack.send(());
                 }
                 Command::SetVolume(v) => {
                     volume = v;
