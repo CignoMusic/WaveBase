@@ -36,6 +36,7 @@ function App() {
       const mapped: Track[] = files.map((f) => ({
         id: f.path,
         name: f.filename,
+        path: f.path,
         bpm: null,
         key: '',
         artists: '',

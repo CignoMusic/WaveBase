@@ -79,7 +79,7 @@ src-tauri/src/
 │   ├── mod.rs           # Module declarations
 │   ├── scan.rs          # scan_directory, scan_status
 │   ├── library.rs       # search_files, get_file, list_files
-│   ├── playback.rs      # play_audio, stop_audio, pause_audio
+│   ├── playback.rs      # play_audio, toggle_playback, pause_audio, resume_audio, stop_audio, get_playback_status, set_volume
 │   └── tags.rs          # add_tag, remove_tag, list_tags
 │
 ├── db/                  # Database layer
@@ -95,7 +95,7 @@ src-tauri/src/
 │
 ├── playback/            # Audio playback
 │   ├── mod.rs           # Module declarations
-│   └── player.rs        # AudioPlayer with PlaybackCommand/PlaybackEvent enums (stub)
+│   └── player.rs        # AudioPlayer with Rodio — play, pause, resume, stop, toggle, volume, status
 │
 └── analysis/            # Audio metadata analysis
     ├── mod.rs           # Module declarations
@@ -190,17 +190,20 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 2)
+## 5. Current State (Session 3)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
 - "Scan Directory" picks a folder, scans for audio files, returns results
 - Files inserted into SQLite `audio_files` table
 - UI renders: Titlebar, Toolbar with filters, TrackList with mock data, PlayerBar with waveform canvas
-- Selection state, stem expansion, play/pause animation all work
+- Selection state, stem expansion work
 - Database connection pool, migrations, schema all set up
 - Custom dark theme CSS complete (no Tailwind utility classes used yet)
 - Clean app data dir management (%APPDATA%/wavebase, ~/Library/Application Support/wavebase)
+- **Real audio playback via Rodio** — play, pause, resume, stop, volume control all working
+- **Playback position polling** — frontend polls backend every 200ms for accurate progress
+- **Track `path` field** — added to Track interface, used for playback targeting
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -208,14 +211,12 @@ scan_roots (
 | `App.tsx` → TrackList | Uses mock data | Scanned files are returned but frontend doesn't query DB — maps `invoke<ScannedFile[]>` response directly to `Track[]`, doesn't use `list_files` |
 | `lib/ui-logic.ts` | Stubs not wired | Playback, search, scan, library, tags state factories exist but aren't connected to Tauri commands |
 | `Toolbar.tsx` | Visual only | Filter pills and search input render but don't do anything |
-| `PlayerBar.tsx` | Synthetic data | Waveform is procedurally generated (sin waves), duration hardcoded at 154s, no real audio playback |
 
 ### ⬜ Not Yet Implemented (Stubs)
 | Module | Files | What's Missing |
 |--------|-------|----------------|
 | **Filename parser** | `analysis/parser.rs` | Extract BPM, key, artist from filename patterns |
 | **Audio analysis** | `analysis/decoder.rs`, `analysis/dsp.rs` | Symphonia decoding + stratum-dsp BPM/key detection |
-| **Audio playback** | `playback/player.rs`, `commands/playback.rs` | Rodio-based play/pause/stop/seek |
 | **Library commands** | `commands/library.rs` | search_files, get_file, list_file |
 | **Tag commands** | `commands/tags.rs` | add_tag, remove_tag, list_tags |
 | **File watcher** | `scanner/watcher.rs` | Real-time filesystem monitoring |
@@ -256,13 +257,16 @@ scan_roots (
 - [ ] Skip analysis if filename already provided the value (keep scanning fast)
 - [ ] Handle analysis errors gracefully (leave field empty for manual tagging)
 
-### Feature 4: Audio Preview ⬜
-- [ ] Play audio via Rodio triggered by Tauri commands
-- [ ] Play/pause/stop/seek controls wired to real playback
-- [ ] Display interactive waveform with @wavesurfer/react
-- [ ] Fast preview start with no noticeable delay
-- [ ] Per-file duration from database
-- [ ] Volume control
+### Feature 4: Audio Preview ✅ (Core playback done)
+- [x] Play audio via Rodio triggered by Tauri commands
+- [x] Play/pause/resume/stop controls wired to real playback
+- [x] Volume control (Rodio Sink::set_volume)
+- [x] Position polling from backend every 200ms
+- [x] Backend tracks position accounting for pauses
+- [x] Auto-detect when playback finishes (Sink::empty)
+- [ ] Interactive waveform with @wavesurfer/react
+- [ ] Click-to-seek on waveform
+- [ ] Per-file duration from database (currently from decoded audio)
 
 ### Feature 5: Advanced Manual Tagging ⬜
 - [ ] Add/remove/list tags per file
@@ -398,6 +402,18 @@ npm run tauri              # Tauri CLI
 - Files inserted into SQLite on scan
 - Stem expansion UI, selection state, drag handles
 - NOTES.md created with known issues and next priorities
+- `PROJECT-INFO.md` created as the new master guide (NOTES.md removed)
+
+### Session 3 — Real Audio Playback (Rodio)
+- `playback/player.rs` completely rewritten: `AudioPlayer` wraps Rodio `OutputStream` + `Sink`
+- Position tracking with pause-aware logic (accounts for cumulative pause duration)
+- 7 Tauri commands: `play_audio`, `toggle_playback`, `pause_audio`, `resume_audio`, `stop_audio`, `get_playback_status`, `set_volume`
+- `AudioPlayer` managed as Tauri state, initialized during `setup`
+- Frontend `PlayerBar.tsx` rewired: removed synthetic RAF loop, added polling via `get_playback_status` every 200ms
+- Play/pause/stop buttons call real Tauri commands
+- Volume slider wired to `set_volume` command
+- `Track` interface gained `path` field for playback targeting
+- `App.tsx` maps `path` from scanned files
 
 ---
 
@@ -409,9 +425,9 @@ npm run tauri              # Tauri CLI
 3. **Wire search to SQLite** — Implement `search_files` command with proper indexing
 
 ### Medium Priority
-4. Implement real audio playback (Rodio via Tauri commands)
-5. Replace synthetic waveform with real decoded samples + WaveSurfer.js
-6. Implement audio analysis fallback (Symphonia + stratum-dsp)
+4. Replace synthetic waveform with real decoded samples + WaveSurfer.js
+5. Implement audio analysis fallback (Symphonia + stratum-dsp)
+6. Add click-to-seek on waveform (Rodio doesn't support seeking natively — may need source recreation)
 
 ### Lower Priority (but needed)
 7. Tag CRUD commands
