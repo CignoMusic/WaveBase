@@ -135,6 +135,39 @@ fn shared_to_status(s: &SharedState) -> PlaybackStatus {
     }
 }
 
+fn flush_state(
+    state: &Arc<Mutex<SharedState>>,
+    sink: &Option<Sink>,
+    started_at: &Option<Instant>,
+    total_paused: f64,
+    pause_start: &Option<Instant>,
+    file_path: &str,
+    duration: f64,
+    volume: f32,
+) {
+    let mut s = state.lock().unwrap();
+    let sink_finished = sink.as_ref().map(|s| s.empty()).unwrap_or(false);
+    let any_sink = sink.is_some();
+
+    s.playing = any_sink && !sink_finished && pause_start.is_none();
+    s.paused = any_sink && !sink_finished && pause_start.is_some();
+    s.stopped = !any_sink || sink_finished;
+
+    s.position = if let Some(start) = started_at {
+        let elapsed = start.elapsed().as_secs_f64();
+        let mut pos = elapsed - total_paused;
+        if let Some(ps) = pause_start {
+            pos -= ps.elapsed().as_secs_f64();
+        }
+        pos.max(0.0).min(if duration > 0.0 { duration } else { f64::MAX })
+    } else {
+        0.0
+    };
+    s.duration = duration;
+    s.file_path = file_path.to_string();
+    s.volume = volume;
+}
+
 fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>) {
     let (_stream, handle) = OutputStream::try_default()
         .expect("Failed to initialize audio output");
@@ -170,6 +203,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             }
                         }
                     }
+                    flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
                     let _ = ack.send(());
                 }
                 Command::Toggle(path, ack) => {
@@ -207,6 +241,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             }
                         }
                     }
+                    flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
                     let _ = ack.send(());
                 }
                 Command::Pause(ack) => {
@@ -214,6 +249,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                         s.pause();
                     }
                     pause_start = Some(Instant::now());
+                    flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
                     let _ = ack.send(());
                 }
                 Command::Resume(ack) => {
@@ -224,6 +260,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                         total_paused += ps.elapsed().as_secs_f64();
                     }
                     pause_start = None;
+                    flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
                     let _ = ack.send(());
                 }
                 Command::Stop(ack) => {
@@ -235,6 +272,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                     started_at = None;
                     total_paused = 0.0;
                     pause_start = None;
+                    flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
                     let _ = ack.send(());
                 }
                 Command::SetVolume(v) => {
@@ -246,29 +284,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
             }
         }
 
-        let mut s = state.lock().unwrap();
-        let sink_finished = sink.as_ref().map(|s| s.empty()).unwrap_or(false);
-        let any_sink = sink.is_some();
-
-        s.playing = any_sink && !sink_finished && pause_start.is_none();
-        s.paused = any_sink && !sink_finished && pause_start.is_some();
-        s.stopped = !any_sink || sink_finished;
-
-        s.position = if let Some(start) = started_at {
-            let elapsed = start.elapsed().as_secs_f64();
-            let mut pos = elapsed - total_paused;
-            if let Some(ps) = pause_start {
-                pos -= ps.elapsed().as_secs_f64();
-            }
-            pos.max(0.0).min(duration)
-        } else {
-            0.0
-        };
-        s.duration = duration;
-        s.file_path = file_path.clone();
-        s.volume = volume;
-        drop(s);
-
+        flush_state(&state, &sink, &started_at, total_paused, &pause_start, &file_path, duration, volume);
         thread::sleep(Duration::from_millis(50));
     }
 }

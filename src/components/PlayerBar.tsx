@@ -37,20 +37,6 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   });
 
   useEffect(() => {
-    invoke<PlaybackStatus>('get_playback_status')
-      .then((s) => setStatus(s))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!status.playing && !status.paused) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = 0;
-      }
-      return;
-    }
-
     pollRef.current = window.setInterval(async () => {
       try {
         const s = await invoke<PlaybackStatus>('get_playback_status');
@@ -63,10 +49,9 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
-        pollRef.current = 0;
       }
     };
-  }, [status.playing, status.paused]);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -190,7 +175,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
           </button>
         </div>
         <div className="sep" />
-        <div className="time-counter">{time} / {total}</div>
+        <div className="time-counter">{time}{status.duration > 0 ? ` / ${total}` : ''}</div>
         <div className="vol-row">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 5H1v4h2l4 3V2L3 5Z" fill="currentColor" />

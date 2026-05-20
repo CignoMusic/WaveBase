@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 3)
+## 5. Current State (Session 4)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -202,8 +202,10 @@ scan_roots (
 - Custom dark theme CSS complete (no Tailwind utility classes used yet)
 - Clean app data dir management (%APPDATA%/wavebase, ~/Library/Application Support/wavebase)
 - **Real audio playback via Rodio** — play, pause, resume, stop, volume control all working
-- **Playback position polling** — frontend polls backend every 200ms for accurate progress
+- **Playback position polling** — frontend polls backend every 200ms for accurate progress, position counter updates in real time
 - **Track `path` field** — added to Track interface, used for playback targeting
+- **Next/prev track navigation** — prev restarts track first click, then goes to previous; next wraps around
+- **Smart prev button** — first click restarts current track, second click goes to previous
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -257,7 +259,7 @@ scan_roots (
 - [ ] Skip analysis if filename already provided the value (keep scanning fast)
 - [ ] Handle analysis errors gracefully (leave field empty for manual tagging)
 
-### Feature 4: Audio Preview ✅ (Core playback done)
+### Feature 4: Audio Preview ✅ (Position tracking fixed)
 - [x] Play audio via Rodio triggered by Tauri commands
 - [x] Play/pause/resume/stop controls wired to real playback
 - [x] Volume control (Rodio Sink::set_volume)
@@ -415,6 +417,13 @@ npm run tauri              # Tauri CLI
 - `Track` interface gained `path` field for playback targeting
 - `App.tsx` maps `path` from scanned files
 
+### Session 4 — Playback Position Fix + Nav Controls
+- Added next/prev track navigation buttons with wrap-around
+- Smart prev button: first click restarts current track, second click goes to previous track
+- Fixed position not updating bug: `pos.max(0.0).min(0.0)` was clamping position to zero when `source.total_duration()` returns `None` (common for MP3). Changed to `min(if duration > 0.0 { duration } else { f64::MAX })`
+- Fixed frontend time counter to omit ` / 0:00` when duration is unknown
+- Removed debug overlay after confirming position tracking works
+
 ---
 
 ## 10. Session Priority (Next Session)
@@ -427,7 +436,7 @@ npm run tauri              # Tauri CLI
 ### Medium Priority
 4. Replace synthetic waveform with real decoded samples + WaveSurfer.js
 5. Implement audio analysis fallback (Symphonia + stratum-dsp)
-6. Add click-to-seek on waveform (Rodio doesn't support seeking natively — may need source recreation)
+6. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
 
 ### Lower Priority (but needed)
 7. Tag CRUD commands
@@ -446,6 +455,8 @@ npm run tauri              # Tauri CLI
 - **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
 - **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
+- **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed position clamping but duration displays as `--:--` for such files
+- **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
 - **`@wavesurfer/react` installed but not used:** Package is in dependencies but no import exists in any file
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
 - **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
