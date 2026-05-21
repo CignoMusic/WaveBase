@@ -26,6 +26,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const waveRef = useRef<number[] | null>(null);
   const pollRef = useRef<number>(0);
   const prevRestartedRef = useRef(false);
+  const maxPositionRef = useRef(0);
   const [status, setStatus] = useState<PlaybackStatus>({
     playing: false,
     paused: false,
@@ -59,7 +60,13 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
 
     const wave = waveRef.current ?? generateWaveformData(200);
     waveRef.current = wave;
-    const progress = status.duration > 0 ? status.position / status.duration : 0;
+    if (status.duration > 0) {
+      maxPositionRef.current = 0;
+    } else if (status.position > maxPositionRef.current) {
+      maxPositionRef.current = status.position;
+    }
+    const denom = status.duration > 0 ? status.duration : Math.max(maxPositionRef.current, status.position + 0.1);
+    const progress = Math.min(status.position / denom, 1);
     drawWaveformToCanvas(canvas, wave, progress);
 
     const parent = canvas.parentElement;
@@ -74,6 +81,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
 
   useEffect(() => {
     waveRef.current = null;
+    maxPositionRef.current = 0;
   }, [selectedTrack]);
 
   useEffect(() => {

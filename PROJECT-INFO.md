@@ -268,7 +268,7 @@ scan_roots (
 - [x] Auto-detect when playback finishes (Sink::empty)
 - [ ] Interactive waveform with @wavesurfer/react
 - [ ] Click-to-seek on waveform
-- [ ] Per-file duration from database (currently from decoded audio)
+- [x] Per-file duration from database (currently from decoded audio or Symphonia probe)
 
 ### Feature 5: Advanced Manual Tagging ⬜
 - [ ] Add/remove/list tags per file
@@ -423,6 +423,10 @@ npm run tauri              # Tauri CLI
 - Fixed position not updating bug: `pos.max(0.0).min(0.0)` was clamping position to zero when `source.total_duration()` returns `None` (common for MP3). Changed to `min(if duration > 0.0 { duration } else { f64::MAX })`
 - Fixed frontend time counter to omit ` / 0:00` when duration is unknown
 - Removed debug overlay after confirming position tracking works
+- **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`. Symphonia reads format headers to get `time_base` and `n_frames`, computing accurate duration for all supported formats (MP3, WAV, FLAC, etc.)
+- Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails — uses running max position as the progress denominator so the playhead always shows movement
+
+### Session 5 — tbd
 
 ---
 
@@ -455,7 +459,7 @@ npm run tauri              # Tauri CLI
 - **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
 - **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
-- **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed position clamping but duration displays as `--:--` for such files
+- **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed with Symphonia probe fallback (`probe_duration`) that reads format headers to compute accurate duration for all formats
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
 - **`@wavesurfer/react` installed but not used:** Package is in dependencies but no import exists in any file
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
