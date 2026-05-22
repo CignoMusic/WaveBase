@@ -470,6 +470,7 @@ html, body {
   overflow: hidden;
   display: flex;
   align-items: stretch;
+  padding: 0 12px;
 }
 
 .waveform-panel.hidden {

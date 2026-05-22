@@ -139,10 +139,11 @@ fn estimate_duration(path: &str) -> f64 {
         if size == 0 {
             return 0.0;
         }
-        // Conservative 128 kbps (16 KB/s). Real MP3s are typically 192–320 kbps,
-        // so this gives a longer estimate → progress only moves forward when
-        // replaced with the real (shorter) duration from waveform decode.
-        size as f64 / 16_000.0
+        // 192 kbps (24 KB/s) — typical for music MP3s. Real files are usually
+        // 192–320 kbps, so the estimate is >= real duration for most files,
+        // meaning progress only moves forward when waveform decode provides
+        // the exact value.
+        size as f64 / 24_000.0
     } else {
         0.0
     }
