@@ -34,6 +34,8 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const pollRef = useRef<number>(0);
   const prevRestartedRef = useRef(false);
   const [showWaveform, setShowWaveform] = useState(false);
+  const showWaveformRef = useRef(showWaveform);
+  useEffect(() => { showWaveformRef.current = showWaveform; }, [showWaveform]);
   const [status, setStatus] = useState<PlaybackStatus>({
     playing: false,
     paused: false,
@@ -49,6 +51,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
       try {
         const s = await invoke<PlaybackStatus>('get_playback_status');
         setStatus(s);
+        updateVisuals(s);
       } catch (e) {
         console.error('Poll playback status failed:', e);
       }
@@ -61,20 +64,16 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     };
   }, []);
 
-  // Single effect: progress bar, waveform canvas, and playhead — all from the same `progress` value
-  useEffect(() => {
-    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
+  function updateVisuals(s: PlaybackStatus) {
+    const progress = s.duration > 0 ? Math.min(s.position / s.duration, 1) : 0;
 
-    // Progress bar — always
     if (progressFillRef.current) {
       progressFillRef.current.style.width = `${progress * 100}%`;
     }
 
-    // Waveform canvas + playhead — only when waveform panel is visible
-    if (!showWaveform) return;
+    if (!showWaveformRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const parent = canvas.parentElement;
     if (!parent) return;
 
@@ -85,6 +84,11 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
       const w = parent.getBoundingClientRect().width - 24;
       playheadRef.current.style.left = `${w * progress}px`;
     }
+  }
+
+  // Merged effect for updates that come from waveform decode (duration changes)
+  useEffect(() => {
+    updateVisuals(status);
   }, [status.position, status.duration, showWaveform]);
 
   useEffect(() => {
