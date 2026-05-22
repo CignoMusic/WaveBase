@@ -61,10 +61,9 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     };
   }, []);
 
-  // Progress bar — always moves, uses fallback when duration unknown (MP3)
+  // Progress bar — moves in sync with real song duration
   useEffect(() => {
-    const denom = status.duration > 0 ? status.duration : 300;
-    const progress = Math.min(status.position / denom, 1);
+    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
     if (progressFillRef.current) {
       progressFillRef.current.style.width = `${progress * 100}%`;
     }
@@ -80,8 +79,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     if (!parent) return;
 
     const wave = waveRef.current ?? flatWaveRef.current;
-    const denom = status.duration > 0 ? status.duration : 300;
-    const progress = Math.min(status.position / denom, 1);
+    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
     drawWaveformToCanvas(canvas, wave, progress);
 
     if (playheadRef.current) {
