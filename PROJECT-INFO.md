@@ -268,7 +268,7 @@ scan_roots (
 - [x] Backend tracks position accounting for pauses
 - [x] Auto-detect when playback finishes (Sink::empty)
 - [x] Real waveform from audio data (Symphonia peak extraction, canvas rendering)
-- [x] Per-file duration from decoded audio or Symphonia probe, stored in DB for instant use on subsequent plays
+- [x] Per-file duration from file headers (lofty, instant), decoded audio (Symphonia), or DB cache
 - [ ] Click-to-seek on waveform (Rodio Sink doesn't support seeking — source recreation needed)
 
 ### Feature 5: Advanced Manual Tagging ⬜
@@ -426,7 +426,16 @@ npm run tauri              # Tauri CLI
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
-### Session 6 — Progress Bar No Longer Guesses (DB-Stored Duration)
+### Session 6 — Accurate Duration from File Headers (No Guessing)
+- **Replaced file-size estimate with real header-based duration probe** — Added `lofty` crate to Cargo.toml, created `probe_duration()` in `player.rs` that reads actual audio file metadata headers (instant, no decode)
+- **Removed `estimate_duration()`** — the 192 kbps file-size guess is gone. All formats now get accurate duration from their headers:
+  - WAV: RIFF header → data_size / byte_rate
+  - FLAC: STREAMINFO → total_samples / sample_rate
+  - MP3: Xing/Info VBR header → frame_count × samples_per_frame / sample_rate
+  - AIFF: COMM chunk → num_sample_frames / sample_rate
+  - OGG/M4A: container-level metadata
+- **Kept DB-stored duration as cache layer** — `store_track_duration` and the DB lookup in `play_audio`/`toggle_playback` remain as a fallback/optimization if `lofty` can't read a format. Waveform decode (Symphonia) still stores the most authoritative duration in the DB
+- **Result:** Every play of every file has accurate progress from second one. No guessing, no jumping, no DB dependency for correctness
 - **Stored real duration in DB after waveform decode** — Added `set_stored_duration()` helper in `commands/playback.rs` that writes to `audio_files.duration_secs`
 - **Read stored duration from DB before playback** — `play_audio` and `toggle_playback` now query the DB for a stored duration before falling back to file-size estimate. If found, `player.set_duration()` immediately corrects the backend state
 - **Added `store_track_duration` Tauri command** — called from the frontend's waveform `.then()` handler alongside the existing `set_duration` invoke
@@ -461,7 +470,6 @@ npm run tauri              # Tauri CLI
 ### Medium Priority
 4. Implement audio analysis fallback (Symphonia + stratum-dsp for BPM/key)
 5. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
-6. **Store duration during initial scan** — Probe duration with Symphonia while scanning so every file has accurate duration from the very first play
 
 ### Lower Priority (but needed)
 7. Tag CRUD commands
@@ -480,7 +488,7 @@ npm run tauri              # Tauri CLI
 - **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
 - **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
-- **Duration unknown for MP3 files (first play only):** First play of a file uses file-size estimate (`file_size / 24000`) until waveform decode (~5s) returns the real duration. On subsequent plays, the stored duration from `audio_files.duration_secs` is used — progress is accurate from second one
+- ~~**Duration unknown for MP3 files:** Fixed. `lofty` reads accurate duration from file headers for all formats — no more guessing or 5s wait~~
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
 - **Waveform decoding is synchronous and slow (~5s for MP3):** `get_waveform_data` decodes entire files on a background thread (`tokio::task::spawn_blocking`). Doesn't block IPC or polling. Flat dotted line shown as placeholder while decoding
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
