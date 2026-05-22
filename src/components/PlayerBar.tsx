@@ -29,11 +29,10 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const playheadRef = useRef<HTMLDivElement>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
   const waveRef = useRef<number[] | null>(null);
-  const flatWaveRef = useRef<number[] | null>(null);
+  const flatWaveRef = useRef<number[]>(Array(200).fill(0.02));
   const lastWavePathRef = useRef('');
   const pollRef = useRef<number>(0);
   const prevRestartedRef = useRef(false);
-  const maxPositionRef = useRef(0);
   const [showWaveform, setShowWaveform] = useState(false);
   const [status, setStatus] = useState<PlaybackStatus>({
     playing: false,
@@ -62,6 +61,15 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     };
   }, []);
 
+  // Progress bar — always aligned with song, independent of waveform
+  useEffect(() => {
+    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
+    if (progressFillRef.current) {
+      progressFillRef.current.style.width = `${progress * 100}%`;
+    }
+  }, [status.position, status.duration]);
+
+  // Waveform canvas + playhead — only when waveform panel is visible
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -69,29 +77,18 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     const parent = canvas.parentElement;
     if (!parent || parent.clientWidth === 0) return;
 
-    const wave = waveRef.current ?? (flatWaveRef.current ??= Array(200).fill(0.02));
-    waveRef.current = wave;
-    if (status.duration > 0) {
-      maxPositionRef.current = 0;
-    } else if (status.position > maxPositionRef.current) {
-      maxPositionRef.current = status.position;
-    }
-    const denom = status.duration > 0 ? status.duration : Math.max(maxPositionRef.current, status.position + 0.1);
-    const progress = Math.min(status.position / denom, 1);
+    const wave = waveRef.current ?? flatWaveRef.current;
+    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
     drawWaveformToCanvas(canvas, wave, progress);
 
-    if (playheadRef.current && parent) {
+    if (playheadRef.current) {
       const w = parent.getBoundingClientRect().width - 24;
       playheadRef.current.style.left = `${12 + w * progress}px`;
     }
-    if (progressFillRef.current) {
-      progressFillRef.current.style.width = `${progress * 100}%`;
-    }
-  }, [status.position, status.duration]);
+  }, [status.position, status.duration, showWaveform]);
 
   useEffect(() => {
     waveRef.current = null;
-    maxPositionRef.current = 0;
     lastWavePathRef.current = '';
   }, [selectedTrack]);
 
@@ -113,7 +110,6 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   useEffect(() => {
     const onResize = () => {
       waveRef.current = null;
-      flatWaveRef.current = null;
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
