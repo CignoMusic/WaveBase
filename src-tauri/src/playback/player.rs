@@ -6,11 +6,6 @@ use rodio::{OutputStream, Sink, Decoder, Source};
 use std::fs::File;
 use std::io::BufReader;
 use serde::Serialize;
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
-use symphonia::default::get_probe;
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize)]
@@ -140,32 +135,6 @@ fn shared_to_status(s: &SharedState) -> PlaybackStatus {
     }
 }
 
-fn probe_duration(path: &str) -> Option<f64> {
-    let file = File::open(path).ok()?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
-    let mut hint = Hint::new();
-    if let Some(ext) = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-    {
-        hint.with_extension(ext);
-    }
-    let format_opts = FormatOptions {
-        enable_gapless: true,
-        ..Default::default()
-    };
-    let metadata_opts = MetadataOptions::default();
-    let probed = get_probe()
-        .format(&hint, mss, &format_opts, &metadata_opts)
-        .ok()?;
-    let track = probed.format.default_track()?;
-    let params = &track.codec_params;
-    let time_base = params.time_base?;
-    let n_frames = params.n_frames?;
-    let dur = time_base.calc_time(n_frames);
-    Some(dur.seconds as f64 + dur.frac)
-}
-
 fn flush_state(
     state: &Arc<Mutex<SharedState>>,
     sink: &Option<Sink>,
@@ -222,7 +191,6 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                         if let Ok(source) = Decoder::new(BufReader::new(file)) {
                             duration = source.total_duration()
                                 .map(|d| d.as_secs_f64())
-                                .or_else(|| probe_duration(&path))
                                 .unwrap_or(0.0);
                             if let Ok(s) = Sink::try_new(&handle) {
                                 s.append(source);
@@ -260,7 +228,6 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             if let Ok(source) = Decoder::new(BufReader::new(file)) {
                                 duration = source.total_duration()
                                     .map(|d| d.as_secs_f64())
-                                    .or_else(|| probe_duration(&path))
                                     .unwrap_or(0.0);
                                 if let Ok(s) = Sink::try_new(&handle) {
                                     s.append(source);

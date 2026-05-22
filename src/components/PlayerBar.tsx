@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { formatTime, generateWaveformData, drawWaveformToCanvas } from '../lib/ui-logic';
+import { formatTime, drawWaveformToCanvas } from '../lib/ui-logic';
 import type { Track } from './TrackList';
 
 interface PlaybackStatus {
@@ -11,6 +11,11 @@ interface PlaybackStatus {
   duration: number;
   file_path: string;
   volume: number;
+}
+
+interface WaveformData {
+  peaks: number[];
+  duration: number;
 }
 
 interface PlayerBarProps {
@@ -24,6 +29,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const playheadRef = useRef<HTMLDivElement>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
   const waveRef = useRef<number[] | null>(null);
+  const flatWaveRef = useRef<number[] | null>(null);
   const lastWavePathRef = useRef('');
   const pollRef = useRef<number>(0);
   const prevRestartedRef = useRef(false);
@@ -63,7 +69,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     const parent = canvas.parentElement;
     if (!parent || parent.clientWidth === 0) return;
 
-    const wave = waveRef.current ?? generateWaveformData(200);
+    const wave = waveRef.current ?? (flatWaveRef.current ??= Array(200).fill(0.02));
     waveRef.current = wave;
     if (status.duration > 0) {
       maxPositionRef.current = 0;
@@ -92,15 +98,22 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   useEffect(() => {
     if (!status.playing || !selectedTrack?.path) return;
     if (waveRef.current && lastWavePathRef.current === selectedTrack.path) return;
+    waveRef.current = null;
     lastWavePathRef.current = selectedTrack.path;
-    invoke<number[]>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
-      .then((data) => { waveRef.current = data; })
+    invoke<WaveformData>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
+      .then((data) => {
+        waveRef.current = data.peaks;
+        if (data.duration > 0) {
+          setStatus((prev) => ({ ...prev, duration: data.duration }));
+        }
+      })
       .catch((e) => console.error('Waveform fetch failed:', e));
   }, [status.playing, selectedTrack]);
 
   useEffect(() => {
     const onResize = () => {
       waveRef.current = null;
+      flatWaveRef.current = null;
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -228,9 +241,9 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
       <div className={`waveform-panel${showWaveform ? '' : ' hidden'}`}>
         <canvas ref={canvasRef} id="waveform-canvas" />
         <div className="playhead-line" ref={playheadRef} />
-        <div className="progress-track">
-          <div className="progress-fill" ref={progressFillRef} />
-        </div>
+      </div>
+      <div className="progress-track">
+        <div className="progress-fill" ref={progressFillRef} />
       </div>
     </div>
   );

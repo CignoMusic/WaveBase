@@ -426,13 +426,21 @@ npm run tauri              # Tauri CLI
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
 ### Session 5 — Real Waveform from Audio Data
-- Created `playback/waveform.rs` — `compute_waveform_peaks()` uses Symphonia to decode audio and extract peak amplitude per time window (on-the-fly, no full decode in memory)
-- Added `get_waveform_data` Tauri command returning `Vec<f64>` peak array
-- Updated `PlayerBar.tsx` to call `get_waveform_data` on track selection, cache result in `waveRef`
-- Added `resampleArray()` to `ui-logic.ts` for resizing waveform data to canvas width
-- Updated `drawWaveformToCanvas` to resample instead of regenerating synthetic data
-- Removed `@wavesurfer/react` as planned dependency (canvas rendering is simpler and avoids conflicting with Rodio playback)
-- Updated PROJECT-INFO.md: waveform back to canvas-based (real data), `@wavesurfer/react` removed as planned path
+- Created `playback/waveform.rs` — `compute_waveform_peaks()` uses Symphonia to decode audio and extract peak amplitude per time window
+- `WaveformData` struct returns both `peaks: Vec<f64>` and `duration: f64` (computed from `codec_params.time_base` + `n_frames`)
+- Added `get_waveform_data` Tauri command returning `WaveformData`
+- Updated `PlayerBar.tsx` to call `get_waveform_data` only when playback starts (not on track selection), cache result in `waveRef`
+- Duration from waveform decode updates frontend `status.duration` once available (replaces 0:00 for MP3 files)
+- **Fixed 5-second playback delay** — removed Symphonia `probe_duration` from Play/Toggle commands (reverted to `unwrap_or(0.0)`). Symphonia's MP3 format reader was scanning the entire file to build a seek index, blocking playback start
+- Added `resampleArray()` to `ui-logic.ts`, updated `drawWaveformToCanvas` to resample instead of regenerating synthetic data
+- Deferred waveform loading to after playback starts
+- Added waveform show/hide toggle button (waveform icon in transport bar)
+- Moved progress-track/fill outside waveform-panel to always be visible at bottom of player
+- Removed fixed 148px height from `.bottom` — auto-sizes to content (transport bar + waveform panel + progress bar)
+- Changed `.waveform-panel` to fixed 108px height; when hidden, `.bottom` shrinks to just transport bar + progress bar
+- **Fixed app freeze during waveform loading** — made `get_waveform_data` async with `tokio::task::spawn_blocking`. Previously it blocked a tokio worker thread, starving playback status polling and other IPC. Now runs on tokio's dedicated blocking thread pool (512 max threads)
+- **Fixed stale waveform on track switch** — `waveRef.current` cleared immediately in waveform-loading effect before invoking backend
+- **Replaced synthetic sine placeholder with flat dotted line** — while waveform is loading, canvas shows `Array(200).fill(0.02)` (tiny bars) instead of fake sine waves
 
 ---
 
@@ -466,7 +474,8 @@ npm run tauri              # Tauri CLI
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
 - **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed with Symphonia probe fallback (`probe_duration`) that reads format headers to compute accurate duration for all formats
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
-- **Waveform decoding is synchronous:** `get_waveform_data` decodes the entire audio file on the Tauri command thread — large files may cause brief UI freezes. Future: run in background thread or extract peaks during scan
+- **Waveform decoding is synchronous and slow (~5s for MP3):** `get_waveform_data` decodes entire files on a background thread (`tokio::task::spawn_blocking`). Doesn't block IPC or polling. Flat dotted line shown as placeholder while decoding
+- **Duration arrives ~5s late for MP3 files:** Since `probe_duration` was removed to fix playback speed, duration for MP3 files starts as `0:00` until waveform decode returns the actual duration. Playhead uses `maxPositionRef` during this window
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
 - **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
 - **Edit the `analysis/parser.rs` test:** The placeholder test `test_parse_bpm` asserts `None` — update it once the parser is implemented

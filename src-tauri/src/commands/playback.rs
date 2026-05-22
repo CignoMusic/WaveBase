@@ -1,6 +1,7 @@
 use tauri::State;
 use crate::error::AppError;
 use crate::playback::player::{AudioPlayer, PlaybackStatus};
+use crate::playback::waveform::WaveformData;
 
 #[tauri::command]
 pub fn play_audio(
@@ -55,6 +56,10 @@ pub fn set_volume(
 }
 
 #[tauri::command]
-pub fn get_waveform_data(path: String, bars: usize) -> Result<Vec<f64>, AppError> {
-    crate::playback::waveform::compute_waveform_peaks(&path, bars)
+pub async fn get_waveform_data(path: String, bars: usize) -> Result<WaveformData, AppError> {
+    tokio::task::spawn_blocking(move || {
+        crate::playback::waveform::compute_waveform_peaks(&path, bars)
+    })
+    .await
+    .map_err(|e| AppError::Playback(format!("Waveform thread panicked: {}", e)))?
 }
