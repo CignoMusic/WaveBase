@@ -81,8 +81,11 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     drawWaveformToCanvas(canvas, wave, progress);
 
     if (playheadRef.current) {
-      const w = parent.getBoundingClientRect().width - 24;
-      playheadRef.current.style.left = `${w * progress}px`;
+      const canvasRect = canvas.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const offsetLeft = canvasRect.left - parentRect.left;
+      const canvasWidth = canvasRect.width;
+      playheadRef.current.style.left = `${offsetLeft + canvasWidth * progress}px`;
     }
   }
 
