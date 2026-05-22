@@ -178,13 +178,23 @@ fn flush_state(
     s.paused = any_sink && !sink_finished && pause_start.is_some();
     s.stopped = !any_sink || sink_finished;
 
-    s.position = if let Some(start) = started_at {
-        let elapsed = start.elapsed().as_secs_f64();
-        let mut pos = elapsed - total_paused;
-        if let Some(ps) = pause_start {
-            pos -= ps.elapsed().as_secs_f64();
+    s.position = if let Some(ref sk) = sink {
+        let sink_pos = sk.get_pos().as_secs_f64();
+        // Use Rodio's decoded position when available — it accounts for the
+        // sink's internal buffer, unlike started_at.elapsed() which counts
+        // wall-clock time from when the source was appended (before audio starts).
+        if sink_pos > 0.0 {
+            sink_pos.min(if duration > 0.0 { duration } else { f64::MAX })
+        } else if let Some(start) = started_at {
+            let elapsed = start.elapsed().as_secs_f64();
+            let mut pos = elapsed - total_paused;
+            if let Some(ps) = pause_start {
+                pos -= ps.elapsed().as_secs_f64();
+            }
+            pos.max(0.0).min(if duration > 0.0 { duration } else { f64::MAX })
+        } else {
+            0.0
         }
-        pos.max(0.0).min(if duration > 0.0 { duration } else { f64::MAX })
     } else {
         0.0
     };

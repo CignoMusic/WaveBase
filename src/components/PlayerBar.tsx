@@ -61,16 +61,16 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     };
   }, []);
 
-  // Progress bar — moves in sync with real song duration
+  // Single effect: progress bar, waveform canvas, and playhead — all from the same `progress` value
   useEffect(() => {
     const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
+
+    // Progress bar — always
     if (progressFillRef.current) {
       progressFillRef.current.style.width = `${progress * 100}%`;
     }
-  }, [status.position, status.duration]);
 
-  // Waveform canvas + playhead — only when waveform panel is visible
-  useEffect(() => {
+    // Waveform canvas + playhead — only when waveform panel is visible
     if (!showWaveform) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -79,12 +79,11 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     if (!parent) return;
 
     const wave = waveRef.current ?? flatWaveRef.current;
-    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
     drawWaveformToCanvas(canvas, wave, progress);
 
     if (playheadRef.current) {
       const w = parent.getBoundingClientRect().width - 24;
-      playheadRef.current.style.left = `${12 + w * progress}px`;
+      playheadRef.current.style.left = `${w * progress}px`;
     }
   }, [status.position, status.duration, showWaveform]);
 
