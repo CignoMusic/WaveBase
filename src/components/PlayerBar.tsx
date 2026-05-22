@@ -102,6 +102,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
       .then((data) => {
         waveRef.current = data.peaks;
         if (data.duration > 0) {
+          setStatus((prev) => ({ ...prev, duration: data.duration }));
           invoke('set_duration', { duration: data.duration });
         }
       })
