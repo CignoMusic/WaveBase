@@ -79,7 +79,7 @@ src-tauri/src/
 │   ├── mod.rs           # Module declarations
 │   ├── scan.rs          # scan_directory, scan_status
 │   ├── library.rs       # search_files, get_file, list_files
-│   ├── playback.rs      # play_audio, toggle_playback, pause_audio, resume_audio, stop_audio, get_playback_status, set_volume
+│   ├── playback.rs      # play_audio, toggle_playback, pause_audio, resume_audio, stop_audio, get_playback_status, set_volume, set_duration, store_track_duration, get_waveform_data
 │   └── tags.rs          # add_tag, remove_tag, list_tags
 │
 ├── db/                  # Database layer
@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 5)
+## 5. Current State (Session 6)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -207,6 +207,7 @@ scan_roots (
 - **Next/prev track navigation** — prev restarts track first click, then goes to previous; next wraps around
 - **Smart prev button** — first click restarts current track, second click goes to previous
 - **Real waveform from audio data** — waveform peaks extracted via Symphonia on the Rust backend, replaces synthetic sine waves
+- **DB-stored track duration** — real duration saved to `audio_files.duration_secs` when waveform decode completes; used on subsequent plays for instant accurate progress
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -267,7 +268,7 @@ scan_roots (
 - [x] Backend tracks position accounting for pauses
 - [x] Auto-detect when playback finishes (Sink::empty)
 - [x] Real waveform from audio data (Symphonia peak extraction, canvas rendering)
-- [x] Per-file duration from decoded audio or Symphonia probe
+- [x] Per-file duration from decoded audio or Symphonia probe, stored in DB for instant use on subsequent plays
 - [ ] Click-to-seek on waveform (Rodio Sink doesn't support seeking — source recreation needed)
 
 ### Feature 5: Advanced Manual Tagging ⬜
@@ -425,6 +426,12 @@ npm run tauri              # Tauri CLI
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
+### Session 6 — Progress Bar No Longer Guesses (DB-Stored Duration)
+- **Stored real duration in DB after waveform decode** — Added `set_stored_duration()` helper in `commands/playback.rs` that writes to `audio_files.duration_secs`
+- **Read stored duration from DB before playback** — `play_audio` and `toggle_playback` now query the DB for a stored duration before falling back to file-size estimate. If found, `player.set_duration()` immediately corrects the backend state
+- **Added `store_track_duration` Tauri command** — called from the frontend's waveform `.then()` handler alongside the existing `set_duration` invoke
+- **Result:** Second play of any MP3 file shows accurate progress from second one. No more guessing
+
 ### Session 5 — Real Waveform from Audio Data
 - Created `playback/waveform.rs` — `compute_waveform_peaks()` uses Symphonia to decode audio and extract peak amplitude per time window
 - `WaveformData` struct returns both `peaks: Vec<f64>` and `duration: f64` (computed from `codec_params.time_base` + `n_frames`)
@@ -454,13 +461,14 @@ npm run tauri              # Tauri CLI
 ### Medium Priority
 4. Implement audio analysis fallback (Symphonia + stratum-dsp for BPM/key)
 5. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
+6. **Store duration during initial scan** — Probe duration with Symphonia while scanning so every file has accurate duration from the very first play
 
 ### Lower Priority (but needed)
-6. Tag CRUD commands
-7. Bundle detection
-8. File watcher
-9. Settings persistence
-10. Clean install/uninstall configuration
+7. Tag CRUD commands
+8. Bundle detection
+9. File watcher
+10. Settings persistence
+11. Clean install/uninstall configuration
 
 ---
 
@@ -472,10 +480,9 @@ npm run tauri              # Tauri CLI
 - **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
 - **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
-- **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed with Symphonia probe fallback (`probe_duration`) that reads format headers to compute accurate duration for all formats
+- **Duration unknown for MP3 files (first play only):** First play of a file uses file-size estimate (`file_size / 24000`) until waveform decode (~5s) returns the real duration. On subsequent plays, the stored duration from `audio_files.duration_secs` is used — progress is accurate from second one
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
 - **Waveform decoding is synchronous and slow (~5s for MP3):** `get_waveform_data` decodes entire files on a background thread (`tokio::task::spawn_blocking`). Doesn't block IPC or polling. Flat dotted line shown as placeholder while decoding
-- **Duration arrives ~5s late for MP3 files:** Since `probe_duration` was removed to fix playback speed, duration for MP3 files starts as `0:00` until waveform decode returns the actual duration. Playhead uses `maxPositionRef` during this window
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
 - **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
 - **Edit the `analysis/parser.rs` test:** The placeholder test `test_parse_bpm` asserts `None` — update it once the parser is implemented

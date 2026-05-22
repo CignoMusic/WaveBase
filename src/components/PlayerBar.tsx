@@ -110,6 +110,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
         if (data.duration > 0) {
           setStatus((prev) => ({ ...prev, duration: data.duration }));
           invoke('set_duration', { duration: data.duration });
+          invoke('store_track_duration', { path: selectedTrack.path, duration: data.duration });
         }
       })
       .catch((e) => console.error('Waveform fetch failed:', e));

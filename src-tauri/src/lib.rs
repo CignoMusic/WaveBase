@@ -40,6 +40,7 @@ pub fn run() {
             commands::playback::get_playback_status,
             commands::playback::set_volume,
             commands::playback::set_duration,
+            commands::playback::store_track_duration,
             commands::playback::get_waveform_data,
             commands::library::search_files,
             commands::library::get_file,

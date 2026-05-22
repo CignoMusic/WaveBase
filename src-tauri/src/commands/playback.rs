@@ -1,22 +1,59 @@
+use std::sync::Arc;
+
 use tauri::State;
+
+use crate::db::pool::DbPool;
 use crate::error::AppError;
 use crate::playback::player::{AudioPlayer, PlaybackStatus};
 use crate::playback::waveform::WaveformData;
 
+fn get_stored_duration(pool: &DbPool, path: &str) -> Result<Option<f64>, AppError> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT duration_secs FROM audio_files WHERE path = ?1 AND duration_secs IS NOT NULL",
+    )?;
+    let mut rows = stmt.query(rusqlite::params![path])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(row.get(0)?)),
+        None => Ok(None),
+    }
+}
+
+fn set_stored_duration(pool: &DbPool, path: &str, duration: f64) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE audio_files SET duration_secs = ?1, updated_at = datetime('now') WHERE path = ?2",
+        rusqlite::params![duration, path],
+    )?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn play_audio(
+    pool: State<'_, Arc<DbPool>>,
     player: State<'_, AudioPlayer>,
     path: String,
 ) -> Result<PlaybackStatus, AppError> {
-    player.play(&path)
+    let status = player.play(&path)?;
+    if let Some(d) = get_stored_duration(&pool, &path)? {
+        player.set_duration(d)?;
+        return Ok(player.status());
+    }
+    Ok(status)
 }
 
 #[tauri::command]
 pub fn toggle_playback(
+    pool: State<'_, Arc<DbPool>>,
     player: State<'_, AudioPlayer>,
     path: String,
 ) -> Result<PlaybackStatus, AppError> {
-    player.toggle(&path)
+    let status = player.toggle(&path)?;
+    if let Some(d) = get_stored_duration(&pool, &path)? {
+        player.set_duration(d)?;
+        return Ok(player.status());
+    }
+    Ok(status)
 }
 
 #[tauri::command]
@@ -61,6 +98,15 @@ pub fn set_duration(
     duration: f64,
 ) -> Result<(), AppError> {
     player.set_duration(duration)
+}
+
+#[tauri::command]
+pub fn store_track_duration(
+    pool: State<'_, Arc<DbPool>>,
+    path: String,
+    duration: f64,
+) -> Result<(), AppError> {
+    set_stored_duration(&pool, &path, duration)
 }
 
 #[tauri::command]
