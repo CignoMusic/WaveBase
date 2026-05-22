@@ -26,6 +26,7 @@ enum Command {
     Resume(mpsc::Sender<()>),
     Stop(mpsc::Sender<()>),
     SetVolume(f32),
+    SetDuration(f64),
 }
 
 struct SharedState {
@@ -121,6 +122,30 @@ impl AudioPlayer {
             .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
         Ok(())
     }
+
+    pub fn set_duration(&self, duration: f64) -> Result<(), AppError> {
+        self.cmd_tx.send(Command::SetDuration(duration))
+            .map_err(|_| AppError::Playback("Audio thread disconnected".into()))?;
+        Ok(())
+    }
+}
+
+/// Fallback duration estimate when the decoder can't determine it (e.g. MP3 via minimp3).
+/// Uses file size and a conservative bitrate so progress never jumps backwards
+/// when the real duration arrives from waveform decoding.
+fn estimate_duration(path: &str) -> f64 {
+    if let Ok(meta) = std::fs::metadata(path) {
+        let size = meta.len();
+        if size == 0 {
+            return 0.0;
+        }
+        // Conservative 128 kbps (16 KB/s). Real MP3s are typically 192–320 kbps,
+        // so this gives a longer estimate → progress only moves forward when
+        // replaced with the real (shorter) duration from waveform decode.
+        size as f64 / 16_000.0
+    } else {
+        0.0
+    }
 }
 
 fn shared_to_status(s: &SharedState) -> PlaybackStatus {
@@ -191,7 +216,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                         if let Ok(source) = Decoder::new(BufReader::new(file)) {
                             duration = source.total_duration()
                                 .map(|d| d.as_secs_f64())
-                                .unwrap_or(0.0);
+                                .unwrap_or_else(|| estimate_duration(&path));
                             if let Ok(s) = Sink::try_new(&handle) {
                                 s.append(source);
                                 s.set_volume(volume);
@@ -228,7 +253,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             if let Ok(source) = Decoder::new(BufReader::new(file)) {
                                 duration = source.total_duration()
                                     .map(|d| d.as_secs_f64())
-                                    .unwrap_or(0.0);
+                                    .unwrap_or_else(|| estimate_duration(&path));
                                 if let Ok(s) = Sink::try_new(&handle) {
                                     s.append(source);
                                     s.set_volume(volume);
@@ -280,6 +305,9 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                     if let Some(ref s) = sink {
                         s.set_volume(v);
                     }
+                }
+                Command::SetDuration(d) => {
+                    duration = d;
                 }
             }
         }

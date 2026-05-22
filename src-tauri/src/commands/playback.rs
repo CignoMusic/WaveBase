@@ -56,6 +56,14 @@ pub fn set_volume(
 }
 
 #[tauri::command]
+pub fn set_duration(
+    player: State<'_, AudioPlayer>,
+    duration: f64,
+) -> Result<(), AppError> {
+    player.set_duration(duration)
+}
+
+#[tauri::command]
 pub async fn get_waveform_data(path: String, bars: usize) -> Result<WaveformData, AppError> {
     tokio::task::spawn_blocking(move || {
         crate::playback::waveform::compute_waveform_peaks(&path, bars)
