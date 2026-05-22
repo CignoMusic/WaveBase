@@ -24,9 +24,11 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   const playheadRef = useRef<HTMLDivElement>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
   const waveRef = useRef<number[] | null>(null);
+  const lastWavePathRef = useRef('');
   const pollRef = useRef<number>(0);
   const prevRestartedRef = useRef(false);
   const maxPositionRef = useRef(0);
+  const [showWaveform, setShowWaveform] = useState(false);
   const [status, setStatus] = useState<PlaybackStatus>({
     playing: false,
     paused: false,
@@ -58,6 +60,9 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const parent = canvas.parentElement;
+    if (!parent || parent.clientWidth === 0) return;
+
     const wave = waveRef.current ?? generateWaveformData(200);
     waveRef.current = wave;
     if (status.duration > 0) {
@@ -69,7 +74,6 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     const progress = Math.min(status.position / denom, 1);
     drawWaveformToCanvas(canvas, wave, progress);
 
-    const parent = canvas.parentElement;
     if (playheadRef.current && parent) {
       const w = parent.getBoundingClientRect().width - 24;
       playheadRef.current.style.left = `${12 + w * progress}px`;
@@ -82,12 +86,17 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   useEffect(() => {
     waveRef.current = null;
     maxPositionRef.current = 0;
-    if (selectedTrack?.path) {
-      invoke<number[]>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
-        .then((data) => { waveRef.current = data; })
-        .catch((e) => console.error('Waveform fetch failed:', e));
-    }
+    lastWavePathRef.current = '';
   }, [selectedTrack]);
+
+  useEffect(() => {
+    if (!status.playing || !selectedTrack?.path) return;
+    if (waveRef.current && lastWavePathRef.current === selectedTrack.path) return;
+    lastWavePathRef.current = selectedTrack.path;
+    invoke<number[]>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
+      .then((data) => { waveRef.current = data; })
+      .catch((e) => console.error('Waveform fetch failed:', e));
+  }, [status.playing, selectedTrack]);
 
   useEffect(() => {
     const onResize = () => {
@@ -186,6 +195,14 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
               <path d="M1.5 2L8.5 7L1.5 12V2Z" />
             </svg>
           </button>
+          <button className="t-btn" onClick={() => setShowWaveform(!showWaveform)} title={showWaveform ? 'Hide waveform' : 'Show waveform'}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <path d="M2 1v12" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 4v6" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 2v10" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M11 5v4" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
         </div>
         <div className="sep" />
         <div className="time-counter">{time}{status.duration > 0 ? ` / ${total}` : ''}</div>
@@ -208,7 +225,7 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
           </span>
         </div>
       </div>
-      <div className="waveform-panel">
+      <div className={`waveform-panel${showWaveform ? '' : ' hidden'}`}>
         <canvas ref={canvasRef} id="waveform-canvas" />
         <div className="playhead-line" ref={playheadRef} />
         <div className="progress-track">

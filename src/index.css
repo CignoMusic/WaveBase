@@ -474,6 +474,10 @@ html, body {
   align-items: stretch;
 }
 
+.waveform-panel.hidden {
+  display: none;
+}
+
 #waveform-canvas {
   width: 100%;
   height: 100%;
