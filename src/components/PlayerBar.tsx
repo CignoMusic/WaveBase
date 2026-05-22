@@ -61,9 +61,10 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     };
   }, []);
 
-  // Progress bar — always aligned with song, independent of waveform
+  // Progress bar — always moves, uses fallback when duration unknown (MP3)
   useEffect(() => {
-    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
+    const denom = status.duration > 0 ? status.duration : 300;
+    const progress = Math.min(status.position / denom, 1);
     if (progressFillRef.current) {
       progressFillRef.current.style.width = `${progress * 100}%`;
     }
@@ -71,14 +72,16 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
 
   // Waveform canvas + playhead — only when waveform panel is visible
   useEffect(() => {
+    if (!showWaveform) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const parent = canvas.parentElement;
-    if (!parent || parent.clientWidth === 0) return;
+    if (!parent) return;
 
     const wave = waveRef.current ?? flatWaveRef.current;
-    const progress = status.duration > 0 ? Math.min(status.position / status.duration, 1) : 0;
+    const denom = status.duration > 0 ? status.duration : 300;
+    const progress = Math.min(status.position / denom, 1);
     drawWaveformToCanvas(canvas, wave, progress);
 
     if (playheadRef.current) {
