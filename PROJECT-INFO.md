@@ -42,7 +42,7 @@ Music producers have thousands of audio files spread across their hard drives �
 | Audio decode | Symphonia 0.5 | Read/decode WAV, MP3, AIFF, FLAC, OGG, M4A |
 | Audio playback | Rodio 0.17 | Playback via Rust backend |
 | BPM/Key analysis | stratum-dsp 1 | Audio analysis fallback |
-| Waveform UI | @wavesurfer/react (WaveSurfer.js) | Waveform rendering in frontend |
+| Waveform UI | Canvas 2D (real peak data via Symphonia) | Waveform rendering in frontend |
 | Styling | Tailwind CSS 3 + custom CSS variables | Dark theme, DAW-like UI |
 | Dialog | @tauri-apps/plugin-dialog 2 | Native folder picker |
 | File watching | notify 6 | Real-time filesystem monitoring |
@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 4)
+## 5. Current State (Session 5)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -202,10 +202,11 @@ scan_roots (
 - Custom dark theme CSS complete (no Tailwind utility classes used yet)
 - Clean app data dir management (%APPDATA%/wavebase, ~/Library/Application Support/wavebase)
 - **Real audio playback via Rodio** — play, pause, resume, stop, volume control all working
-- **Playback position polling** — frontend polls backend every 200ms for accurate progress, position counter updates in real time
+- **Playback position & duration tracking** — position counter, playhead, and progress fill all update in real time
 - **Track `path` field** — added to Track interface, used for playback targeting
 - **Next/prev track navigation** — prev restarts track first click, then goes to previous; next wraps around
 - **Smart prev button** — first click restarts current track, second click goes to previous
+- **Real waveform from audio data** — waveform peaks extracted via Symphonia on the Rust backend, replaces synthetic sine waves
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -223,7 +224,6 @@ scan_roots (
 | **Tag commands** | `commands/tags.rs` | add_tag, remove_tag, list_tags |
 | **File watcher** | `scanner/watcher.rs` | Real-time filesystem monitoring |
 | **Bundle detection** | Not started | Group related files by folder |
-| **WaveSurfer.js** | Not imported | Replace synthetic canvas with @wavesurfer/react |
 | **Settings** | `config.rs` has path | No TOML read/write yet |
 
 ---
@@ -266,9 +266,9 @@ scan_roots (
 - [x] Position polling from backend every 200ms
 - [x] Backend tracks position accounting for pauses
 - [x] Auto-detect when playback finishes (Sink::empty)
-- [ ] Interactive waveform with @wavesurfer/react
-- [ ] Click-to-seek on waveform
-- [x] Per-file duration from database (currently from decoded audio or Symphonia probe)
+- [x] Real waveform from audio data (Symphonia peak extraction, canvas rendering)
+- [x] Per-file duration from decoded audio or Symphonia probe
+- [ ] Click-to-seek on waveform (Rodio Sink doesn't support seeking — source recreation needed)
 
 ### Feature 5: Advanced Manual Tagging ⬜
 - [ ] Add/remove/list tags per file
@@ -300,12 +300,11 @@ scan_roots (
 ### Feature 9: Clean Minimal UI ⚠️ (Skeleton built, needs wiring)
 - [x] Sidebar/toolbar navigation
 - [x] File list with columns (Name, BPM, Key, Artists)
-- [x] Waveform panel on selection
+- [x] Waveform panel on selection (real audio data via Symphonia)
 - [x] Dark mode (default)
 - [ ] Light mode option
 - [ ] DAW-like, familiar to producers
 - [ ] Wire all visual elements to real data/commands
-- [ ] Replace synthetic waveform with real @wavesurfer/react
 
 ### Feature 10: Extensibility ⬜
 - [ ] Clean modular data layer
@@ -423,10 +422,17 @@ npm run tauri              # Tauri CLI
 - Fixed position not updating bug: `pos.max(0.0).min(0.0)` was clamping position to zero when `source.total_duration()` returns `None` (common for MP3). Changed to `min(if duration > 0.0 { duration } else { f64::MAX })`
 - Fixed frontend time counter to omit ` / 0:00` when duration is unknown
 - Removed debug overlay after confirming position tracking works
-- **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`. Symphonia reads format headers to get `time_base` and `n_frames`, computing accurate duration for all supported formats (MP3, WAV, FLAC, etc.)
-- Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails — uses running max position as the progress denominator so the playhead always shows movement
+- **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
+- Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
-### Session 5 — tbd
+### Session 5 — Real Waveform from Audio Data
+- Created `playback/waveform.rs` — `compute_waveform_peaks()` uses Symphonia to decode audio and extract peak amplitude per time window (on-the-fly, no full decode in memory)
+- Added `get_waveform_data` Tauri command returning `Vec<f64>` peak array
+- Updated `PlayerBar.tsx` to call `get_waveform_data` on track selection, cache result in `waveRef`
+- Added `resampleArray()` to `ui-logic.ts` for resizing waveform data to canvas width
+- Updated `drawWaveformToCanvas` to resample instead of regenerating synthetic data
+- Removed `@wavesurfer/react` as planned dependency (canvas rendering is simpler and avoids conflicting with Rodio playback)
+- Updated PROJECT-INFO.md: waveform back to canvas-based (real data), `@wavesurfer/react` removed as planned path
 
 ---
 
@@ -438,16 +444,15 @@ npm run tauri              # Tauri CLI
 3. **Wire search to SQLite** — Implement `search_files` command with proper indexing
 
 ### Medium Priority
-4. Replace synthetic waveform with real decoded samples + WaveSurfer.js
-5. Implement audio analysis fallback (Symphonia + stratum-dsp)
-6. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
+4. Implement audio analysis fallback (Symphonia + stratum-dsp for BPM/key)
+5. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
 
 ### Lower Priority (but needed)
-7. Tag CRUD commands
-8. Bundle detection
-9. File watcher
-10. Settings persistence
-11. Clean install/uninstall configuration
+6. Tag CRUD commands
+7. Bundle detection
+8. File watcher
+9. Settings persistence
+10. Clean install/uninstall configuration
 
 ---
 
@@ -461,7 +466,7 @@ npm run tauri              # Tauri CLI
 - **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
 - **Duration unknown for MP3 files:** Rodio's `Source::total_duration()` returns `None` for MP3 decoder (minimp3 limitation). Fixed with Symphonia probe fallback (`probe_duration`) that reads format headers to compute accurate duration for all formats
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
-- **`@wavesurfer/react` installed but not used:** Package is in dependencies but no import exists in any file
+- **Waveform decoding is synchronous:** `get_waveform_data` decodes the entire audio file on the Tauri command thread — large files may cause brief UI freezes. Future: run in background thread or extract peaks during scan
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
 - **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
 - **Edit the `analysis/parser.rs` test:** The placeholder test `test_parse_bpm` asserts `None` — update it once the parser is implemented

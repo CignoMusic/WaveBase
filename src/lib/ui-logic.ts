@@ -9,6 +9,17 @@ export function formatTime(seconds: number): string {
 // ─── Waveform ───
 // TODO: Replace synthetic generation with real audio sample data from Symphonia decoding
 
+export function resampleArray(data: number[], targetLen: number): number[] {
+  if (data.length === 0 || targetLen === 0) return Array(targetLen).fill(0);
+  const result = new Array(targetLen);
+  for (let i = 0; i < targetLen; i++) {
+    const pos = (i / targetLen) * data.length;
+    const idx = Math.min(Math.floor(pos), data.length - 1);
+    result[i] = data[idx];
+  }
+  return result;
+}
+
 export function generateWaveformData(bars: number): number[] {
   const d: number[] = [];
   for (let i = 0; i < bars; i++) {
@@ -48,7 +59,7 @@ export function drawWaveformToCanvas(
 
   const BAR = 2, GAP = 1, STEP = BAR + GAP;
   const bars = Math.floor(W / STEP);
-  const data = waveformData.length === bars ? waveformData : generateWaveformData(bars);
+  const data = waveformData.length === bars ? waveformData : resampleArray(waveformData, bars);
 
   const px = W * progress;
   ctx.clearRect(0, 0, W, H);

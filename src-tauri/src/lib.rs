@@ -39,6 +39,7 @@ pub fn run() {
             commands::playback::stop_audio,
             commands::playback::get_playback_status,
             commands::playback::set_volume,
+            commands::playback::get_waveform_data,
             commands::library::search_files,
             commands::library::get_file,
             commands::library::list_files,

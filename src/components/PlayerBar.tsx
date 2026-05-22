@@ -82,6 +82,11 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
   useEffect(() => {
     waveRef.current = null;
     maxPositionRef.current = 0;
+    if (selectedTrack?.path) {
+      invoke<number[]>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
+        .then((data) => { waveRef.current = data; })
+        .catch((e) => console.error('Waveform fetch failed:', e));
+    }
   }, [selectedTrack]);
 
   useEffect(() => {

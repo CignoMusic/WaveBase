@@ -53,3 +53,8 @@ pub fn set_volume(
 ) -> Result<(), AppError> {
     player.set_volume(volume)
 }
+
+#[tauri::command]
+pub fn get_waveform_data(path: String, bars: usize) -> Result<Vec<f64>, AppError> {
+    crate::playback::waveform::compute_waveform_peaks(&path, bars)
+}
