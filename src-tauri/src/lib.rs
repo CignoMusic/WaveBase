@@ -8,6 +8,8 @@ mod scanner;
 use std::sync::Arc;
 
 use db::pool::DbPool;
+use playback::player::AudioPlayer;
+use tauri::Manager;
 
 pub use error::AppError;
 
@@ -23,15 +25,24 @@ pub fn run() {
         .manage(pool)
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let _ = app;
+            let player = AudioPlayer::new();
+            app.manage(player);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan::scan_directory,
             commands::scan::scan_status,
             commands::playback::play_audio,
-            commands::playback::stop_audio,
+            commands::playback::toggle_playback,
             commands::playback::pause_audio,
+            commands::playback::resume_audio,
+            commands::playback::stop_audio,
+            commands::playback::get_playback_status,
+            commands::playback::set_volume,
+            commands::playback::seek_audio,
+            commands::playback::set_duration,
+            commands::playback::store_track_duration,
+            commands::playback::get_waveform_data,
             commands::library::search_files,
             commands::library::get_file,
             commands::library::list_files,

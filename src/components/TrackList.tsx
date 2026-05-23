@@ -3,6 +3,7 @@ import { useState } from 'react';
 export interface Track {
   id: string;
   name: string;
+  path: string;
   bpm: number | null;
   key: string;
   artists: string;
@@ -14,9 +15,10 @@ interface TrackListProps {
   tracks: Track[];
   selectedId: string;
   onSelect: (id: string) => void;
+  onDoubleClick?: (id: string) => void;
 }
 
-export default function TrackList({ tracks, selectedId, onSelect }: TrackListProps) {
+export default function TrackList({ tracks, selectedId, onSelect, onDoubleClick }: TrackListProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggleExpanded = (id: string) => {
@@ -44,6 +46,7 @@ export default function TrackList({ tracks, selectedId, onSelect }: TrackListPro
             <div
               className={`row${selectedId === track.id ? ' selected' : ''}`}
               onClick={() => onSelect(track.id)}
+              onDoubleClick={() => onDoubleClick?.(track.id)}
             >
               <div className="drag-handle">
                 <svg width="8" height="10" viewBox="0 0 8 10" fill="currentColor">
@@ -80,6 +83,7 @@ export default function TrackList({ tracks, selectedId, onSelect }: TrackListPro
                     key={stem.id}
                     className={`row stem${selectedId === stem.id ? ' selected' : ''}`}
                     onClick={() => onSelect(stem.id)}
+                    onDoubleClick={() => onDoubleClick?.(stem.id)}
                   >
                     <div />
                     <div className="dot orange" style={{ width: 5, height: 5 }} />
