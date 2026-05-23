@@ -428,12 +428,13 @@ npm run tauri              # Tauri CLI
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
 ### Session 7 — Click-to-Seek on Progress Bar & Waveform
-- **Added `Command::Seek` to audio thread** — recreates the Rodio sink with `source.skip_duration()` to seek to an arbitrary position. Preserves pause state across the seek
+- **Added `Command::Seek` to audio thread** — recreates the Rodio sink at an arbitrary position (rewritten mid-session for performance)
 - **Added `seek_offset` tracking** — `flush_state()` now accepts `seek_offset: f64` so position = `seek_offset + elapsed_since_seek - total_paused`. Resets timing variables correctly on seek
 - **Added `AudioPlayer::seek()` method** and `seek_audio` Tauri command — returns the updated `PlaybackStatus` after seeking
-- **Frontend click handlers** on both `.progress-track` (always visible) and `#waveform-canvas` — computes click fraction × `status.duration`, invokes `seek_audio`, updates visual state immediately
-- **Instant visual feedback** — the seek handler calls both `setStatus(s)` and `updateVisuals(s)` with the returned status, so time counter, progress fill, canvas highlight, and playhead line all update synchronously, not waiting for the 200ms poll
+- **Frontend click handlers** on both `.progress-track` (always visible) and `#waveform-canvas` — computes click fraction × `status.duration`, invokes `seek_audio`, updates visual state immediately via both `setStatus(s)` and `updateVisuals(s)`
 - **Edge cases handled:** seek while paused (stays paused at new position), seek to position beyond duration (clamped), seek when no track loaded (no-op)
+- **First iteration (slow):** Used Rodio's `source.skip_duration(position)` — decodes every sample from start to seek position before playback can resume (~2s delay for MP3)
+- **Second iteration (instant):** Replaced with PCM pre-decode approach. After each Play/Toggle, a background thread decodes the entire file to raw PCM (Vec<f32>) via Symphonia. On seek, a `SamplesBuffer` is created from the PCM data starting at the seek position — O(1) seek, no decoding at seek time. The background decode runs in parallel with Rodio playback, so by the time the user seeks, the buffer is usually ready. Falls back to the old slow path if the buffer isn't ready yet (edge case for immediate seeks on newly played files)
 
 ### Session 6 — Accurate Duration from File Headers (No Guessing)
 - **Replaced file-size estimate with real header-based duration probe** — Added `lofty` crate to Cargo.toml, created `probe_duration()` in `player.rs` that reads actual audio file metadata headers (instant, no decode)
