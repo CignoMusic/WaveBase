@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 6)
+## 5. Current State (Session 7)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -208,6 +208,7 @@ scan_roots (
 - **Smart prev button** — first click restarts current track, second click goes to previous
 - **Real waveform from audio data** — waveform peaks extracted via Symphonia on the Rust backend, replaces synthetic sine waves
 - **DB-stored track duration** — real duration saved to `audio_files.duration_secs` when waveform decode completes; used on subsequent plays for instant accurate progress
+- **Click-to-seek** — click on progress bar or waveform canvas to seek to any position; backend recreates Rodio sink at target position via `skip_duration`, position/pause state preserved
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -269,7 +270,7 @@ scan_roots (
 - [x] Auto-detect when playback finishes (Sink::empty)
 - [x] Real waveform from audio data (Symphonia peak extraction, canvas rendering)
 - [x] Per-file duration from file headers (lofty, instant), decoded audio (Symphonia), or DB cache
-- [ ] Click-to-seek on waveform (Rodio Sink doesn't support seeking — source recreation needed)
+- [x] Click-to-seek on waveform/progress bar (Rodio source recreation via `skip_duration`)
 
 ### Feature 5: Advanced Manual Tagging ⬜
 - [ ] Add/remove/list tags per file
@@ -425,6 +426,14 @@ npm run tauri              # Tauri CLI
 - Removed debug overlay after confirming position tracking works
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
+
+### Session 7 — Click-to-Seek on Progress Bar & Waveform
+- **Added `Command::Seek` to audio thread** — recreates the Rodio sink with `source.skip_duration()` to seek to an arbitrary position. Preserves pause state across the seek
+- **Added `seek_offset` tracking** — `flush_state()` now accepts `seek_offset: f64` so position = `seek_offset + elapsed_since_seek - total_paused`. Resets timing variables correctly on seek
+- **Added `AudioPlayer::seek()` method** and `seek_audio` Tauri command — returns the updated `PlaybackStatus` after seeking
+- **Frontend click handlers** on both `.progress-track` (always visible) and `#waveform-canvas` — computes click fraction × `status.duration`, invokes `seek_audio`, updates visual state immediately
+- **Instant visual feedback** — the seek handler calls both `setStatus(s)` and `updateVisuals(s)` with the returned status, so time counter, progress fill, canvas highlight, and playhead line all update synchronously, not waiting for the 200ms poll
+- **Edge cases handled:** seek while paused (stays paused at new position), seek to position beyond duration (clamped), seek when no track loaded (no-op)
 
 ### Session 6 — Accurate Duration from File Headers (No Guessing)
 - **Replaced file-size estimate with real header-based duration probe** — Added `lofty` crate to Cargo.toml, created `probe_duration()` in `player.rs` that reads actual audio file metadata headers (instant, no decode)

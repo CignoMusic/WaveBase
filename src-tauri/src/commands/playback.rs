@@ -93,6 +93,14 @@ pub fn set_volume(
 }
 
 #[tauri::command]
+pub fn seek_audio(
+    player: State<'_, AudioPlayer>,
+    position: f64,
+) -> Result<PlaybackStatus, AppError> {
+    player.seek(position)
+}
+
+#[tauri::command]
 pub fn set_duration(
     player: State<'_, AudioPlayer>,
     duration: f64,

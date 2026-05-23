@@ -172,6 +172,21 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     }
   };
 
+  const handleSeek = async (e: React.MouseEvent<HTMLDivElement | HTMLCanvasElement>) => {
+    if (status.duration <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const fraction = Math.max(0, Math.min(x / rect.width, 1));
+    const targetPos = fraction * status.duration;
+    try {
+      const s = await invoke<PlaybackStatus>('seek_audio', { position: targetPos });
+      setStatus(s);
+      updateVisuals(s);
+    } catch (err) {
+      console.error('Seek failed:', err);
+    }
+  };
+
   const isPlaying = status.playing;
   const time = formatTime(status.position);
   const total = formatTime(status.duration);
@@ -244,10 +259,10 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
         </div>
       </div>
       <div className={`waveform-panel${showWaveform ? '' : ' hidden'}`}>
-        <canvas ref={canvasRef} id="waveform-canvas" />
+        <canvas ref={canvasRef} id="waveform-canvas" onClick={handleSeek} />
         <div className="playhead-line" ref={playheadRef} />
       </div>
-      <div className="progress-track">
+      <div className="progress-track" onClick={handleSeek}>
         <div className="progress-fill" ref={progressFillRef} />
       </div>
     </div>
