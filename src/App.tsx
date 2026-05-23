@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import Titlebar from './components/Titlebar';
 import Toolbar from './components/Toolbar';
@@ -84,6 +84,51 @@ function App() {
     setSelectedId(prev.id);
     handlePlayTrack(prev.id);
   }, [getFlatTracks, selectedId, handlePlayTrack]);
+
+  const handleTogglePlay = useCallback(async () => {
+    if (!selectedTrack) return;
+    try {
+      await invoke('toggle_playback', { path: selectedTrack.path });
+    } catch (e) {
+      console.error('Toggle playback failed:', e);
+    }
+  }, [selectedTrack]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.code) {
+        case 'Space':
+        case 'MediaPlayPause':
+          e.preventDefault();
+          handleTogglePlay();
+          break;
+        case 'MediaNextTrack':
+          e.preventDefault();
+          handleNextTrack();
+          break;
+        case 'MediaPreviousTrack':
+          e.preventDefault();
+          handlePrevTrack();
+          break;
+        case 'ArrowRight':
+          if (e.ctrlKey) {
+            e.preventDefault();
+            handleNextTrack();
+          }
+          break;
+        case 'ArrowLeft':
+          if (e.ctrlKey) {
+            e.preventDefault();
+            handlePrevTrack();
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleTogglePlay, handleNextTrack, handlePrevTrack]);
 
   return (
     <div className="app">

@@ -208,7 +208,8 @@ scan_roots (
 - **Smart prev button** — first click restarts current track, second click goes to previous
 - **Real waveform from audio data** — waveform peaks extracted via Symphonia on the Rust backend, replaces synthetic sine waves
 - **DB-stored track duration** — real duration saved to `audio_files.duration_secs` when waveform decode completes; used on subsequent plays for instant accurate progress
-- **Click-to-seek** — click on progress bar or waveform canvas to seek to any position; backend recreates Rodio sink at target position via `skip_duration`, position/pause state preserved
+- **Click-to-seek** — click on progress bar or waveform canvas to seek to any position; uses pre-decoded PCM buffer for instant O(1) seeking
+- **Keyboard shortcuts** — Space/MediaPlayPause toggles play/pause, MediaNextTrack/MediaPreviousTrack and Ctrl+Arrow for track navigation; suppressed when typing in input fields
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -270,7 +271,8 @@ scan_roots (
 - [x] Auto-detect when playback finishes (Sink::empty)
 - [x] Real waveform from audio data (Symphonia peak extraction, canvas rendering)
 - [x] Per-file duration from file headers (lofty, instant), decoded audio (Symphonia), or DB cache
-- [x] Click-to-seek on waveform/progress bar (Rodio source recreation via `skip_duration`)
+- [x] Click-to-seek on waveform/progress bar (PCM pre-decode for instant seek)
+- [x] Global keyboard shortcuts (Space/MediaPlayPause, MediaNext/Prev, Ctrl+Arrow)
 
 ### Feature 5: Advanced Manual Tagging ⬜
 - [ ] Add/remove/list tags per file
@@ -426,6 +428,14 @@ npm run tauri              # Tauri CLI
 - Removed debug overlay after confirming position tracking works
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
+
+### Session 8 — Global Keyboard Shortcuts
+- **Added global keydown handler** in `App.tsx` — listens for `Space`, `MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`, and `Ctrl+ArrowLeft`/`Ctrl+ArrowRight`
+- **Space / MediaPlayPause** → toggles play/pause on the currently selected track via `toggle_playback`
+- **MediaNextTrack / Ctrl+ArrowRight** → skips to next track (wraps around)
+- **MediaPreviousTrack / Ctrl+ArrowLeft** → skips to previous track (wraps around)
+- **Input-aware** — shortcuts are suppressed when focus is in an `<input>` or `<textarea>` (e.g., search box)
+- **Extracted `handleTogglePlay`** into `App.tsx` as a reusable callback, shared by the keyboard handler
 
 ### Session 7 — Click-to-Seek on Progress Bar & Waveform
 - **Added `Command::Seek` to audio thread** — recreates the Rodio sink at an arbitrary position (rewritten mid-session for performance)
