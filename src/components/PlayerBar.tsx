@@ -104,13 +104,15 @@ export default function PlayerBar({ selectedTrack, onNext, onPrev }: PlayerBarPr
     if (waveRef.current && lastWavePathRef.current === selectedTrack.path) return;
     waveRef.current = null;
     lastWavePathRef.current = selectedTrack.path;
-    invoke<WaveformData>('get_waveform_data', { path: selectedTrack.path, bars: 500 })
+    const requestedPath = selectedTrack.path;
+    invoke<WaveformData>('get_waveform_data', { path: requestedPath, bars: 500 })
       .then((data) => {
+        if (lastWavePathRef.current !== requestedPath) return;
         waveRef.current = data.peaks;
         if (data.duration > 0) {
           setStatus((prev) => ({ ...prev, duration: data.duration }));
           invoke('set_duration', { duration: data.duration });
-          invoke('store_track_duration', { path: selectedTrack.path, duration: data.duration });
+          invoke('store_track_duration', { path: requestedPath, duration: data.duration });
         }
       })
       .catch((e) => console.error('Waveform fetch failed:', e));

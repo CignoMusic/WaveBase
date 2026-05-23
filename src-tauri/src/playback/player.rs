@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -214,7 +215,8 @@ fn flush_state(
 
 /// Decodes an entire audio file into raw PCM samples using Symphonia.
 /// Runs in a background thread so playback starts immediately with Rodio.
-fn decode_file_to_pcm(path: &str) -> Option<PcmBuffer> {
+/// Checks `cancel` periodically; returns None if cancelled.
+fn decode_file_to_pcm(path: &str, cancel: Arc<AtomicBool>) -> Option<PcmBuffer> {
     let file = File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -247,8 +249,12 @@ fn decode_file_to_pcm(path: &str) -> Option<PcmBuffer> {
         .ok()?;
 
     let mut all_samples: Vec<f32> = Vec::new();
+    let mut packet_count = 0u32;
 
     loop {
+        if cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         match probed.format.next_packet() {
             Ok(packet) => {
                 if packet.track_id() != track_id {
@@ -260,6 +266,11 @@ fn decode_file_to_pcm(path: &str) -> Option<PcmBuffer> {
                     let mut sample_buf = SampleBuffer::<f32>::new(num_frames as u64, spec.clone());
                     sample_buf.copy_interleaved_ref(audio_buf);
                     all_samples.extend_from_slice(sample_buf.samples());
+                    packet_count += 1;
+                    // Check cancellation every ~50 packets (~1.3s of MP3 at 44100Hz)
+                    if packet_count % 50 == 0 && cancel.load(Ordering::Relaxed) {
+                        return None;
+                    }
                 }
             }
             Err(symphonia::core::errors::Error::IoError(ref e))
@@ -293,6 +304,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
     let mut duration = 0.0;
     let mut volume = 0.8;
     let mut pcm_buffer: Option<PcmBuffer> = None;
+    let mut cancel_decode = Arc::new(AtomicBool::new(false));
     let (bg_tx, bg_rx) = mpsc::channel::<PcmBuffer>();
 
     loop {
@@ -327,10 +339,13 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                     }
                     // Background decode entire file for instant seeking
                     if !file_path.is_empty() {
+                        cancel_decode.store(true, Ordering::Relaxed);
+                        let new_cancel = Arc::new(AtomicBool::new(false));
+                        cancel_decode = new_cancel.clone();
                         let bg_path = file_path.clone();
                         let bg_tx = bg_tx.clone();
                         thread::spawn(move || {
-                            if let Some(buf) = decode_file_to_pcm(&bg_path) {
+                            if let Some(buf) = decode_file_to_pcm(&bg_path, new_cancel) {
                                 let _ = bg_tx.send(buf);
                             }
                         });
@@ -375,10 +390,13 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                             }
                         }
                         if !file_path.is_empty() {
+                            cancel_decode.store(true, Ordering::Relaxed);
+                            let new_cancel = Arc::new(AtomicBool::new(false));
+                            cancel_decode = new_cancel.clone();
                             let bg_path = file_path.clone();
                             let bg_tx = bg_tx.clone();
                             thread::spawn(move || {
-                                if let Some(buf) = decode_file_to_pcm(&bg_path) {
+                                if let Some(buf) = decode_file_to_pcm(&bg_path, new_cancel) {
                                     let _ = bg_tx.send(buf);
                                 }
                             });
@@ -410,6 +428,7 @@ fn audio_thread(cmd_rx: mpsc::Receiver<Command>, state: Arc<Mutex<SharedState>>)
                     if let Some(s) = sink.take() {
                         s.stop();
                     }
+                    cancel_decode.store(true, Ordering::Relaxed);
                     file_path.clear();
                     duration = 0.0;
                     started_at = None;

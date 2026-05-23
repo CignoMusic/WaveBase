@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 7)
+## 5. Current State (Session 8)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -483,9 +483,9 @@ npm run tauri              # Tauri CLI
 ## 10. Session Priority (Next Session)
 
 ### Immediate Next Steps
-1. **Wire TrackList to real database** — Create `list_files` and `get_file` Tauri commands, update `App.tsx` to call them on mount and after scan
-2. **Implement filename parser** (`analysis/parser.rs`) — Extract BPM, key, artist from filenames during scanning
-3. **Wire search to SQLite** — Implement `search_files` command with proper indexing
+1. **Tags and Filters** — Implement tag CRUD commands (add/remove/list tags per file), wire them to the frontend, and make the filter pills in Toolbar functional
+2. **Wire TrackList to real database** — Create `list_files` and `get_file` Tauri commands, update `App.tsx` to call them on mount and after scan
+3. **Implement filename parser** (`analysis/parser.rs`) — Extract BPM, key, artist from filenames during scanning
 
 ### Medium Priority
 4. Implement audio analysis fallback (Symphonia + stratum-dsp for BPM/key)
@@ -511,6 +511,7 @@ npm run tauri              # Tauri CLI
 - ~~**Duration unknown for MP3 files:** Fixed. `lofty` reads accurate duration from file headers for all formats — no more guessing or 5s wait~~
 - **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
 - **Waveform decoding is synchronous and slow (~5s for MP3):** `get_waveform_data` decodes entire files on a background thread (`tokio::task::spawn_blocking`). Doesn't block IPC or polling. Flat dotted line shown as placeholder while decoding
+- **Holding Ctrl+Arrow fires rapid track switching:** Keyboard handler has no debounce/throttle. Holding Ctrl+Arrow rapidly cycles through tracks, each firing play_audio + PCM decode. Lags briefly as decode threads queue up. Acceptable for normal use; holding the keys is an edge case
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
 - **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
 - **Edit the `analysis/parser.rs` test:** The placeholder test `test_parse_bpm` asserts `None` — update it once the parser is implemented
