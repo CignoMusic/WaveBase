@@ -88,6 +88,42 @@ function App() {
 
   loadAllFileTagsRef.current = loadAllFileTags;
 
+  const handleRefreshLibrary = useCallback(async () => {
+    try {
+      const [fetchedTags, fetchedFiles] = await Promise.all([
+        invoke<TagInfo[]>('get_all_tags'),
+        invoke<AudioFile[]>('list_files', { limit: 5000, offset: 0 }),
+      ]);
+      setAllTags(fetchedTags);
+      const mapped: Track[] = fetchedFiles.map((f) => ({
+        id: f.path,
+        name: f.filename,
+        path: f.path,
+        bpm: f.bpm,
+        key: f.key ?? '',
+        artists: f.artist ?? '',
+        bpmAnalyzed: f.bpm_analyzed,
+        keyAnalyzed: f.key_analyzed,
+        dotColor: (f.extension === 'wav' || f.extension === 'aiff' || f.extension === 'aif') ? 'green' as const : 'orange' as const,
+      }));
+      setTracks(mapped);
+      const map: Record<string, TagInfo[]> = {};
+      for (const t of mapped) {
+        try {
+          map[t.path] = await invoke<TagInfo[]>('list_file_tags', { filePath: t.path });
+        } catch {
+          map[t.path] = [];
+        }
+      }
+      setFileTags(map);
+      if (mapped.length > 0 && !mapped.find((t) => t.id === selectedId)) {
+        setSelectedId(mapped[0].id);
+      }
+    } catch (e) {
+      console.error('Refresh library failed:', e);
+    }
+  }, [selectedId]);
+
   // Fetch tags and files on mount
   useEffect(() => {
     invoke<TagInfo[]>('get_all_tags').then(setAllTags).catch(console.error);
@@ -329,6 +365,8 @@ function App() {
           tags={allTags}
           onTagsChange={setAllTags}
           onClose={() => setShowSettings(false)}
+          onRefreshLibrary={handleRefreshLibrary}
+          onScanDirectory={handleScanDirectory}
         />
       )}
     </div>

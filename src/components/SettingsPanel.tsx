@@ -9,9 +9,11 @@ interface SettingsPanelProps {
   tags: TagInfo[];
   onTagsChange: (tags: TagInfo[]) => void;
   onClose: () => void;
+  onRefreshLibrary: () => Promise<void>;
+  onScanDirectory: (path: string) => void;
 }
 
-export default function SettingsPanel({ tags, onTagsChange, onClose }: SettingsPanelProps) {
+export default function SettingsPanel({ tags, onTagsChange, onClose, onRefreshLibrary, onScanDirectory }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('directories');
 
   const tabs: { key: SettingsTab; label: string }[] = [
@@ -44,9 +46,11 @@ export default function SettingsPanel({ tags, onTagsChange, onClose }: SettingsP
             ))}
           </nav>
           <div className="settings-content">
-            {activeTab === 'directories' && <DirectoriesPanel />}
+            {activeTab === 'directories' && (
+              <DirectoriesPanel onRefreshLibrary={onRefreshLibrary} onScanDirectory={onScanDirectory} />
+            )}
             {activeTab === 'tags' && <TagsPanel tags={tags} onTagsChange={onTagsChange} />}
-            {activeTab === 'database' && <DatabasePanel />}
+            {activeTab === 'database' && <DatabasePanel onRefreshLibrary={onRefreshLibrary} />}
           </div>
         </div>
       </div>
@@ -56,7 +60,7 @@ export default function SettingsPanel({ tags, onTagsChange, onClose }: SettingsP
 
 /* ─── Directories ─── */
 
-function DirectoriesPanel() {
+function DirectoriesPanel({ onRefreshLibrary, onScanDirectory }: { onRefreshLibrary: () => Promise<void>; onScanDirectory: (path: string) => void }) {
   const [roots, setRoots] = useState<ScanRoot[]>([]);
 
   const loadRoots = useCallback(async () => {
@@ -80,19 +84,22 @@ function DirectoriesPanel() {
     try {
       await invoke('add_scan_root', { path: selected });
       await loadRoots();
+      // Immediately scan the directory so files appear
+      onScanDirectory(selected);
     } catch (e) {
-      console.error('Failed to add scan root:', e);
+      alert('Failed to add directory: ' + e);
     }
   };
 
   const handleRemove = async (id: number, path: string) => {
-    const ok = confirm(`Remove "${path}" from your library? Files will not be deleted.`);
+    const ok = confirm(`Remove "${path}" from your library?\n\nAll audio files in this directory will be deleted from the library.`);
     if (!ok) return;
     try {
-      await invoke('remove_scan_root', { id });
+      await invoke('remove_scan_root', { id, path });
       await loadRoots();
+      await onRefreshLibrary();
     } catch (e) {
-      console.error('Failed to remove scan root:', e);
+      alert('Failed to remove directory: ' + e);
     }
   };
 
@@ -100,7 +107,7 @@ function DirectoriesPanel() {
     <div className="settings-section">
       <h3>Scan Directories</h3>
       <p className="settings-desc">
-        Add folders that WaveBase should watch for audio files.
+        Add folders that WaveBase should watch for audio files. Adding a directory will immediately scan it.
       </p>
       <div className="dir-list">
         {roots.length === 0 && (
@@ -159,7 +166,7 @@ function TagsPanel({ tags, onTagsChange }: { tags: TagInfo[]; onTagsChange: (t: 
       onTagsChange([...tags, tag]);
       setNewTagName('');
     } catch (e) {
-      console.error('Create tag failed:', e);
+      alert('Failed to create tag: ' + e);
     }
   }, [newTagName, tags, onTagsChange]);
 
@@ -173,7 +180,7 @@ function TagsPanel({ tags, onTagsChange }: { tags: TagInfo[]; onTagsChange: (t: 
       await invoke('delete_tag', { tagId });
       onTagsChange(tags.filter((t) => t.id !== tagId));
     } catch (e) {
-      console.error('Delete tag failed:', e);
+      alert('Failed to delete tag: ' + e);
     }
   }, [tags, onTagsChange, fileCounts]);
 
@@ -184,7 +191,7 @@ function TagsPanel({ tags, onTagsChange }: { tags: TagInfo[]; onTagsChange: (t: 
       const updated = await invoke<TagInfo>('toggle_tag_pin', { tagId });
       onTagsChange(tags.map((t) => (t.id === tagId ? updated : t)));
     } catch (e) {
-      console.error('Toggle pin failed:', e);
+      alert('Failed to toggle pin: ' + e);
     }
   }, [tags, onTagsChange]);
 
@@ -245,7 +252,7 @@ function TagsPanel({ tags, onTagsChange }: { tags: TagInfo[]; onTagsChange: (t: 
 
 /* ─── Database ─── */
 
-function DatabasePanel() {
+function DatabasePanel({ onRefreshLibrary }: { onRefreshLibrary: () => Promise<void> }) {
   const [dbSize, setDbSize] = useState<number | null>(null);
   const [confirmStep, setConfirmStep] = useState(0);
 
@@ -276,13 +283,14 @@ function DatabasePanel() {
 
   const handleClearExecute = async () => {
     try {
-      await invoke('clear_database');
-      setDbSize(null);
-      loadSize();
+      const newSize = await invoke<number>('clear_database');
+      setDbSize(newSize);
+      setConfirmStep(3);
+      await onRefreshLibrary();
     } catch (e) {
-      console.error('Failed to clear database:', e);
+      alert('Failed to clear database: ' + e);
+      setConfirmStep(0);
     }
-    setConfirmStep(3);
   };
 
   const handleCancel = () => {
