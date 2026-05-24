@@ -155,7 +155,7 @@ html, body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: grid;
-  grid-template-columns: 32px 28px 1fr 72px 96px 1fr;
+  grid-template-columns: 32px 28px 1fr 72px 96px 1fr minmax(100px, 1.2fr);
   align-items: center;
   padding: 0 12px;
   flex-shrink: 0;
@@ -192,7 +192,7 @@ html, body {
 .row {
   height: var(--row-h);
   display: grid;
-  grid-template-columns: 32px 28px 1fr 72px 96px 1fr;
+  grid-template-columns: 32px 28px 1fr 72px 96px 1fr minmax(100px, 1.2fr);
   align-items: center;
   padding: 0 12px;
   cursor: pointer;
@@ -223,7 +223,7 @@ html, body {
   height: var(--stem-h);
   background: rgba(0, 0, 0, 0.18);
   padding-left: 48px;
-  grid-template-columns: 12px 28px 1fr 72px 96px 1fr;
+  grid-template-columns: 12px 28px 1fr 72px 96px 1fr minmax(100px, 1.2fr);
 }
 
 .row.stem:hover {
@@ -330,6 +330,337 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ─── TAGS CELL ─── */
+.tags-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.tag-list {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.tag-chip {
+  font-size: 10px;
+  color: var(--text2);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 0 5px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tag-chip:hover {
+  background: var(--border2);
+  color: var(--text);
+}
+
+.tag-remove {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 0 1px;
+}
+
+.tag-remove:hover {
+  color: var(--text);
+}
+
+.tag-more {
+  font-size: 10px;
+  color: var(--text3);
+  padding: 0 2px;
+}
+
+.tag-add-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border2);
+  background: none;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.row:hover .tag-add-btn {
+  display: flex;
+}
+
+.tag-add-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* ─── TAG DROPDOWN ─── */
+.tag-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  min-width: 140px;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.tag-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.tag-dropdown-item:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.tag-dropdown-footer {
+  border-top: 1px solid var(--border);
+  padding: 4px;
+}
+
+.tag-dropdown-footer .tool-btn {
+  width: 100%;
+}
+
+/* ─── ANALYZED HINT ─── */
+.analyzed-hint {
+  font-size: 11px;
+  color: var(--text3);
+  margin-left: 2px;
+  cursor: help;
+}
+
+/* ─── FILTER DROPDOWN ─── */
+.filter-wrap {
+  position: relative;
+}
+
+.filter-btn {
+  position: relative;
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  min-width: 160px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  padding: 4px 0;
+}
+
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text2);
+  cursor: pointer;
+}
+
+.filter-option:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.filter-option input {
+  accent-color: var(--blue);
+}
+
+.filter-dropdown-footer {
+  border-top: 1px solid var(--border);
+  padding: 4px;
+}
+
+.filter-dropdown-footer .tool-btn {
+  width: 100%;
+}
+
+/* ─── TAG PROGRESS ─── */
+.tag-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.tag-progress-bar {
+  width: 60px;
+  height: 4px;
+  background: var(--border2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tag-progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.tag-progress-text {
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.tag-progress-done .tag-progress-text {
+  color: var(--green);
+}
+
+/* ─── SETTINGS PANEL ─── */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 360px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-row-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-tag-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.settings-tag-count {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.settings-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-preset-badge {
+  font-size: 10px;
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.settings-delete-btn {
+  color: var(--orange) !important;
+}
+
+.settings-footer {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-input {
+  flex: 1;
+  height: 26px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 0 8px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  outline: none;
+}
+
+.settings-input::placeholder {
+  color: var(--text3);
 }
 
 /* ─── STEMS WRAP ─── */

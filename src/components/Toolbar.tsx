@@ -1,33 +1,118 @@
-import { useState } from 'react';
-
-const FILTERS = ['All', 'Beats', 'Loops', 'Stems'];
+import { useState, useRef, useEffect } from 'react';
+import type { TagInfo, TagProgress } from '../lib/ui-logic';
 
 interface ToolbarProps {
-  activeFilter: string;
-  onFilterChange: (filter: string) => void;
+  tags: TagInfo[];
+  activeTagNames: string[];
+  onTagToggle: (tagName: string) => void;
+  tagProgress: TagProgress | null;
+  onOpenSettings: () => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
 }
 
-export default function Toolbar({ activeFilter, onFilterChange }: ToolbarProps) {
-  const [query, setQuery] = useState('');
+export default function Toolbar({
+  tags,
+  activeTagNames,
+  onTagToggle,
+  tagProgress,
+  onOpenSettings,
+  searchQuery,
+  onSearchChange,
+}: ToolbarProps) {
+  const [showFilter, setShowFilter] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setShowFilter(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const hasActiveFilter = activeTagNames.length > 0;
 
   return (
     <div className="toolbar">
-      {FILTERS.map((f) => (
+      <button
+        className={`tool-btn${activeTagNames.length === 0 ? ' active' : ''}`}
+        onClick={() => {
+          if (activeTagNames.length > 0) {
+            activeTagNames.forEach((t) => onTagToggle(t));
+          }
+        }}
+      >
+        All
+      </button>
+      {tags.slice(0, 8).map((tag) => (
         <button
-          key={f}
-          className={`tool-btn${activeFilter === f ? ' active' : ''}`}
-          onClick={() => onFilterChange(f)}
+          key={tag.id}
+          className={`tool-btn${activeTagNames.includes(tag.name) ? ' active' : ''}`}
+          onClick={() => onTagToggle(tag.name)}
         >
-          {f}
+          {tag.name}
         </button>
       ))}
+      {tags.length > 8 && (
+        <button className="tool-btn" onClick={() => setShowFilter(true)}>
+          +{tags.length - 8}
+        </button>
+      )}
       <div className="toolbar-sep" />
-      <button className="tool-btn">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M1 3h10M3 6h6M5 9h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-        </svg>
-        Filter
-      </button>
+      <div className="filter-wrap" ref={filterRef}>
+        <button
+          className={`tool-btn filter-btn${hasActiveFilter ? ' active' : ''}`}
+          onClick={() => setShowFilter(!showFilter)}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 3h10M3 6h6M5 9h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Filter
+          {hasActiveFilter && ` (${activeTagNames.length})`}
+        </button>
+        {showFilter && (
+          <div className="filter-dropdown">
+            {tags.map((tag) => (
+              <label key={tag.id} className="filter-option">
+                <input
+                  type="checkbox"
+                  checked={activeTagNames.includes(tag.name)}
+                  onChange={() => onTagToggle(tag.name)}
+                />
+                <span>{tag.name}</span>
+              </label>
+            ))}
+            <div className="filter-dropdown-footer">
+              <button className="tool-btn" onClick={onOpenSettings}>
+                Manage Tags…
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {tagProgress?.status === 'scanning' && (
+        <div className="tag-progress">
+          <div className="tag-progress-bar">
+            <div
+              className="tag-progress-fill"
+              style={{
+                width: `${tagProgress.total > 0 ? (tagProgress.processed / tagProgress.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <span className="tag-progress-text">
+            Tagging: {tagProgress.processed}/{tagProgress.total}
+          </span>
+        </div>
+      )}
+      {tagProgress?.status === 'complete' && (
+        <div className="tag-progress tag-progress-done">
+          <span className="tag-progress-text">✓ Tagged</span>
+        </div>
+      )}
       <div className="search-box">
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
           <circle cx="4.5" cy="4.5" r="3.5" stroke="currentColor" strokeWidth="1.2" />
@@ -36,8 +121,8 @@ export default function Toolbar({ activeFilter, onFilterChange }: ToolbarProps) 
         <input
           type="text"
           placeholder="Search library…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
     </div>

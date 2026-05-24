@@ -140,15 +140,17 @@ export function createLibraryState(): { files: LibraryFile[]; total: number } {
   return { files: [], total: 0 };
 }
 
-// ─── Tags (stub) ───
-// TODO: Wire to add_tag / remove_tag / list_tags Tauri commands
+// ─── Tags ───
 
-export interface Tag {
-  id: string;
+export interface TagInfo {
+  id: number;
   name: string;
   color: string | null;
+  isPreset: boolean;
 }
 
-export function createTagsState(): Tag[] {
-  return [];
+export interface TagProgress {
+  total: number;
+  processed: number;
+  status: 'idle' | 'scanning' | 'complete';
 }

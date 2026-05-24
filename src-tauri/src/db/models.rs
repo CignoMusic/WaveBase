@@ -14,6 +14,8 @@ pub struct AudioFile {
     pub bpm: Option<i32>,
     pub key: Option<String>,
     pub artist: Option<String>,
+    pub bpm_analyzed: bool,
+    pub key_analyzed: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -23,6 +25,14 @@ pub struct Tag {
     pub id: i64,
     pub name: String,
     pub color: Option<String>,
+    pub is_preset: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagProgress {
+    pub total: usize,
+    pub processed: usize,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,4 +68,11 @@ pub struct ParsedMetadata {
     pub bpm: Option<i32>,
     pub key: Option<String>,
     pub artist: Option<String>,
+    pub track_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioFileWithTags {
+    pub file: AudioFile,
+    pub tags: Vec<Tag>,
 }

@@ -1,5 +1,17 @@
 use rusqlite::Connection;
 
+fn has_column(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for row in rows {
+        if row? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "
@@ -16,6 +28,8 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
             bpm         INTEGER,
             key         TEXT,
             artist      TEXT,
+            bpm_analyzed INTEGER NOT NULL DEFAULT 0,
+            key_analyzed INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -49,5 +63,30 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
         );
         ",
     )?;
+
+    // Migrate existing databases: add new columns if they don't exist
+    if !has_column(conn, "audio_files", "bpm_analyzed")? {
+        conn.execute_batch(
+            "ALTER TABLE audio_files ADD COLUMN bpm_analyzed INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE audio_files ADD COLUMN key_analyzed INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+
+    if !has_column(conn, "tags", "is_preset")? {
+        conn.execute(
+            "ALTER TABLE tags ADD COLUMN is_preset INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+
+    // Seed preset tags if they don't exist
+    let presets = ["Loop", "Beat", "Stem", "OneShot"];
+    for name in &presets {
+        conn.execute(
+            "INSERT OR IGNORE INTO tags (name, is_preset) VALUES (?1, 1)",
+            rusqlite::params![name],
+        )?;
+    }
+
     Ok(())
 }

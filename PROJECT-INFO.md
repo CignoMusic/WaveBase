@@ -190,7 +190,7 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 8)
+## 5. Current State (Session 9)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
@@ -210,24 +210,28 @@ scan_roots (
 - **DB-stored track duration** — real duration saved to `audio_files.duration_secs` when waveform decode completes; used on subsequent plays for instant accurate progress
 - **Click-to-seek** — click on progress bar or waveform canvas to seek to any position; uses pre-decoded PCM buffer for instant O(1) seeking
 - **Keyboard shortcuts** — Space/MediaPlayPause toggles play/pause, MediaNextTrack/MediaPreviousTrack and Ctrl+Arrow for track navigation; suppressed when typing in input fields
+- **Filename parser** — `analysis/parser.rs` extracts BPM, key, track type, artist from filenames during scanning
+- **Audio analysis fallback** — `analysis/decoder.rs` (Symphonia PCM decode) + `analysis/dsp.rs` (stratum-dsp BPM/key detection) fills gaps when filename doesn't provide metadata
+- **Tag CRUD** — `commands/tags.rs` fully implemented: add, remove, list, create, delete, and AND-match filtering by tag names
+- **Async background tagging** — scan returns files instantly (fast), then background thread parses filenames + analyzes audio + auto-creates tags; progress bar in toolbar shows status
+- **Dynamic filter pills** — Toolbar shows real tags from DB as clickable filters, multi-select with AND logic
+- **Tag management settings** — `SettingsPanel.tsx` modal for adding/removing tags
+- **Analyzed indicator** — BPM/key values from audio analysis show a subtle ~ icon (tooltip: "From audio analysis")
+- **TrackList persistence** — `list_files` command reads from DB; tracks persist across app restarts
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
 |-----------|-------|---------|
-| `App.tsx` → TrackList | Uses mock data | Scanned files are returned but frontend doesn't query DB — maps `invoke<ScannedFile[]>` response directly to `Track[]`, doesn't use `list_files` |
-| `lib/ui-logic.ts` | Stubs not wired | Playback, search, scan, library, tags state factories exist but aren't connected to Tauri commands |
-| `Toolbar.tsx` | Visual only | Filter pills and search input render but don't do anything |
+| `Toolbar.tsx` search | Frontend-only | Search input renders but `search_files` backend is still a stub — no debounced SQL query yet |
+| `ui-logic.ts` play stubs | Legacy | Playback/search/scan state factories exist but aren't used (real data flows through Tauri invoke directly) |
 
 ### ⬜ Not Yet Implemented (Stubs)
 | Module | Files | What's Missing |
 |--------|-------|----------------|
-| **Filename parser** | `analysis/parser.rs` | Extract BPM, key, artist from filename patterns |
-| **Audio analysis** | `analysis/decoder.rs`, `analysis/dsp.rs` | Symphonia decoding + stratum-dsp BPM/key detection |
-| **Library commands** | `commands/library.rs` | search_files, get_file, list_file |
-| **Tag commands** | `commands/tags.rs` | add_tag, remove_tag, list_tags |
 | **File watcher** | `scanner/watcher.rs` | Real-time filesystem monitoring |
 | **Bundle detection** | Not started | Group related files by folder |
-| **Settings** | `config.rs` has path | No TOML read/write yet |
+| **Settings persistence** | `config.rs` has path | No TOML read/write yet |
+| **Search** | `commands/library.rs:search_files` | Proper SQLite full-text search |
 
 ---
 
@@ -243,24 +247,24 @@ scan_roots (
 - [ ] Multiple root directories
 - [ ] File watcher for real-time updates
 
-### Feature 2: Smart Filename Parsing & Auto-Tagging ⬜
-- [ ] Parse filename for BPM (pattern: `123bpm`, `123 BPM`, case-insensitive)
-- [ ] Parse filename for key (pattern: `D Minor`, `Dmin`, `Dm`, `D#maj`, normalize to full notation)
-- [ ] Parse filename for artist (pattern: `@username`)
-- [ ] Extract track name (remaining text after removing structured tokens)
-- [ ] Treat underscores/dashes as spaces
-- [ ] Case-insensitive matching for BPM and key
-- [ ] Tokens can appear in any position in filename
-- [ ] Store parsed values in DB fields (bpm, key, artist, track_name)
-- [ ] Parsed values automatically become editable tags
+### Feature 2: Smart Filename Parsing & Auto-Tagging ✅ (Done)
+- [x] Parse filename for BPM (pattern: `123bpm`, `123 BPM`, case-insensitive)
+- [x] Parse filename for key (pattern: `D Minor`, `Dmin`, `Dm`, `D#maj`, normalize to full notation)
+- [x] Parse filename for artist (pattern: `@username`)
+- [x] Extract track name (remaining text after removing structured tokens)
+- [x] Treat underscores/dashes as spaces
+- [x] Case-insensitive matching for BPM and key
+- [x] Tokens can appear in any position in filename
+- [x] Store parsed values in DB fields (bpm, key, artist, track_name)
+- [x] Parsed values automatically become editable tags
 
-### Feature 3: Audio Analysis Fallback ⬜
-- [ ] Decode audio with Symphonia (WAV, MP3, AIFF, FLAC, OGG, M4A)
-- [ ] BPM detection via stratum-dsp
-- [ ] Key detection via stratum-dsp
-- [ ] Only analyze fields not already parsed from filename
-- [ ] Skip analysis if filename already provided the value (keep scanning fast)
-- [ ] Handle analysis errors gracefully (leave field empty for manual tagging)
+### Feature 3: Audio Analysis Fallback ✅ (Done)
+- [x] Decode audio with Symphonia (WAV, MP3, AIFF, FLAC, OGG, M4A)
+- [x] BPM detection via stratum-dsp
+- [x] Key detection via stratum-dsp
+- [x] Only analyze fields not already parsed from filename
+- [x] Skip analysis if filename already provided the value (keep scanning fast)
+- [x] Handle analysis errors gracefully (leave field empty for manual tagging)
 
 ### Feature 4: Audio Preview ✅ (Position tracking fixed)
 - [x] Play audio via Rodio triggered by Tauri commands
@@ -274,12 +278,13 @@ scan_roots (
 - [x] Click-to-seek on waveform/progress bar (PCM pre-decode for instant seek)
 - [x] Global keyboard shortcuts (Space/MediaPlayPause, MediaNext/Prev, Ctrl+Arrow)
 
-### Feature 5: Advanced Manual Tagging ⬜
-- [ ] Add/remove/list tags per file
-- [ ] Tag colors
-- [ ] Tag management (rename, delete, merge)
-- [ ] Multi-tag filtering
-- [ ] Auto-detected values stored as editable tags
+### Feature 5: Advanced Manual Tagging ✅ (Done)
+- [x] Add/remove/list tags per file
+- [x] Tag management (add, delete tags in settings panel)
+- [x] Multi-tag AND-filtering
+- [x] Auto-detected values stored as editable tags
+- [ ] Tag colors (schema supports it, UI deferred)
+- [ ] Tag rename/merge (UI deferred)
 
 ### Feature 6: Bundle Detection ⬜
 - [ ] Detect related files sharing a parent folder
@@ -429,6 +434,80 @@ npm run tauri              # Tauri CLI
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
+### Session 9 — Tagging & Filtering System
+
+**Backend — Filename Parser (`analysis/parser.rs`):**
+- Implemented `parse_filename()` extracting BPM (`\d{2,3}bpm`, `bpm\d{2,3}`), key (`[A-G][#b]? (maj|min|m)`), track type (loop/beat/stem/oneshot), artist (@username)
+- Tokens can appear anywhere in filename, case-insensitive, underscores/dashes treated as spaces
+- Conservative matching — leaves fields empty on ambiguity (no guessing)
+
+**Backend — Audio Analysis (`analysis/decoder.rs`, `analysis/dsp.rs`):**
+- `analysis/decoder.rs`: Full Symphonia decode to mono `Vec<f32>` + sample rate (reuses pattern from `playback/waveform.rs`)
+- `analysis/dsp.rs`: stratum-dsp `analyze_audio()` integration for BPM + key detection with `AnalysisConfig::default()`
+- Only runs for fields not already parsed from filename (skip if filename provided the value)
+- Errors handled gracefully — leaves field empty rather than crashing
+
+**Backend — Tag CRUD (`commands/tags.rs`):**
+- `add_tag` — find-or-create tag by name + link to file via `file_tags`
+- `remove_tag` — unlink tag from file
+- `list_file_tags` — all tags for a given file path
+- `get_all_tags` — all tags in the system (for filter pills)
+- `create_tag` / `delete_tag` — explicit tag management (for settings panel)
+- `filter_files_by_tag_names` — AND-match: file must have ALL specified tags
+
+**Backend — Async Background Tagging (`commands/scan.rs`):**
+- `scan_directory` stays fast: walkdir + INSERT files, spawns background thread, returns immediately
+- Background thread runs per file: parse_filename → UPDATE DB + auto-create + link tags → if gaps → decode_audio → analyze → UPDATE with bpm_analyzed=1 → create tags
+- Lofty probe_duration creates time-code tags (e.g., "0:32")
+- `TagProgress` shared state (`Arc<Mutex<>>`) tracks total/processed/status
+- `get_tag_progress` command for frontend polling
+- State initialized in Tauri `setup()`
+
+**Backend — DB Schema:**
+- `audio_files` gained `bpm_analyzed INTEGER` and `key_analyzed INTEGER` (0=from filename, 1=from analysis)
+- `tags` gained `is_preset INTEGER` (1=system tag, cannot be deleted)
+- Preset tags seeded on first migration: Loop, Beat, Stem, OneShot
+
+**Frontend — App.tsx:**
+- State: `allTags`, `activeTagNames`, `tagProgress`, `showSettings`, `searchQuery`
+- On mount: `get_all_tags` + `list_files` (persistent track list across app restarts)
+- After scan: starts polling `get_tag_progress` every 300ms
+- Filtering: AND-match local tracks against `activeTagNames`
+- Handlers: onTagToggle, onAddTag, onRemoveTag, onOpenSettings
+
+**Frontend — Toolbar.tsx:**
+- Dynamic filter pills rendered from `allTags` (no hardcoded Beats/Loops/Stems)
+- Active filters highlighted with simple active class
+- "Filter" button → dropdown with checkboxes per tag + "Manage Tags…" link to settings
+- Compact progress bar shown when `tagProgress.status === "scanning"`
+- Search input → `onSearchChange` callback
+
+**Frontend — TrackList.tsx:**
+- Added 7th "Tags" column (comma-separated text, no colored pills)
+- Row hover shows "+" button → opens mini tag picker dropdown with checkboxes
+- Tag names have hover "×" to remove from file
+- Analyzed indicator: small `~` after BPM/key values when `bpm_analyzed=1`/`key_analyzed=1`
+- EMPTY values still show `—` (unchanged from before)
+
+**Frontend — SettingsPanel.tsx:**
+- Modal overlay for tag management
+- Lists all tags with name + file count + delete button
+- Preset tags shown with locked badge, delete disabled
+- "Add Tag" form (name input)
+- Delete shows confirmation with file count
+- Accessible from Filter dropdown and TrackList tag editor
+
+**Frontend — index.css:**
+- `.tag-list` — flex row for tags column
+- `.tag-add-btn` — small + button on row hover
+- `.tag-dropdown` — compact dropdown for tag picker
+- `.analysis-hint` — subtle ~ indicator with tooltip
+- `.filter-dropdown` — checkbox list for multi-select filtering
+- `.tag-progress` — compact progress bar in toolbar
+- `.settings-overlay` / `.settings-panel` — tag manager modal
+- Updated `.col-header` / `.row` grid to 7 columns (added tags column)
+- `.filter-btn` extracted from generic `.tool-btn` for the Filter button
+
 ### Session 8 — Global Keyboard Shortcuts
 - **Added global keydown handler** in `App.tsx` — listens for `Space`, `MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`, and `Ctrl+ArrowLeft`/`Ctrl+ArrowRight`
 - **Space / MediaPlayPause** → toggles play/pause on the currently selected track via `toggle_playback`
@@ -483,38 +562,31 @@ npm run tauri              # Tauri CLI
 ## 10. Session Priority (Next Session)
 
 ### Immediate Next Steps
-1. **Tags and Filters** — Implement tag CRUD commands (add/remove/list tags per file), wire them to the frontend, and make the filter pills in Toolbar functional
-2. **Wire TrackList to real database** — Create `list_files` and `get_file` Tauri commands, update `App.tsx` to call them on mount and after scan
-3. **Implement filename parser** (`analysis/parser.rs`) — Extract BPM, key, artist from filenames during scanning
+1. **Wire search** — Implement `search_files` backend (SQLite LIKE query across filename/tags/BPM/key) + debounced frontend wiring
+2. **Incremental scanning** — Only scan new/changed files based on `modified_at`
 
 ### Medium Priority
-4. Implement audio analysis fallback (Symphonia + stratum-dsp for BPM/key)
-5. Add click-to-seek on waveform (Rodio Sink doesn't support seeking — would need source recreation at target position)
+3. Bundle detection — Group related files by folder, collapsible UI
+4. File watcher — Real-time filesystem monitoring via `notify`
+5. Settings persistence — TOML read/write via `config.rs`
 
 ### Lower Priority (but needed)
-7. Tag CRUD commands
-8. Bundle detection
-9. File watcher
-10. Settings persistence
-11. Clean install/uninstall configuration
+6. Tag colors (already in schema, needs UI in settings)
+7. Tag rename/merge (settings panel)
+8. Clean install/uninstall configuration
 
 ---
 
 ## 11. Known Issues & Gotchas
 
-- **Mock data not from DB:** TrackList populates with mock/mapped scan results, never reads from `list_files` command
-- **Synthetic waveform:** `ui-logic.ts` generates fake waveform data using combined sine waves — not real audio samples
-- **Hardcoded duration:** PlayerBar uses static `154` seconds for all tracks
+- **Audio analysis is blocking (tokio::task::spawn_blocking):** `analysis/decoder.rs` and `analysis/dsp.rs` run on tokio's blocking thread pool. Each file decoded serially in the background tagging thread. For very large libraries (>500 files), this could take minutes. Acceptable for v1.
+- **stratum-dsp analysis may be inaccurate for non-musical content:** BPM/key detection works best on structured music. Sound effects, dialogue, or ambient recordings may produce unreliable results. The ~ indicator warns users.
 - **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
 - **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
-- **Scan is synchronous:** `scan_directory` blocks the UI thread for large directories — needs tokio + progress channel
-- ~~**Duration unknown for MP3 files:** Fixed. `lofty` reads accurate duration from file headers for all formats — no more guessing or 5s wait~~
-- **No click-to-seek on waveform:** Rodio Sink doesn't support seeking. Would need to recreate the Sink from a source started at the target position
-- **Waveform decoding is synchronous and slow (~5s for MP3):** `get_waveform_data` decodes entire files on a background thread (`tokio::task::spawn_blocking`). Doesn't block IPC or polling. Flat dotted line shown as placeholder while decoding
 - **Holding Ctrl+Arrow fires rapid track switching:** Keyboard handler has no debounce/throttle. Holding Ctrl+Arrow rapidly cycles through tracks, each firing play_audio + PCM decode. Lags briefly as decode threads queue up. Acceptable for normal use; holding the keys is an edge case
 - **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
-- **Duplicate `analysis` and `db/models.rs` `ParsedMetadata`:** Both define similar metadata types — keep `db::models::ParsedMetadata` as the canonical type, use it from `analysis/parser.rs`
-- **Edit the `analysis/parser.rs` test:** The placeholder test `test_parse_bpm` asserts `None` — update it once the parser is implemented
+- **Search not wired:** `search_files` command is still a stub — search input in Toolbar is frontend-only
+- **Tag rename/merge not implemented:** Settings panel only supports add/delete, not rename or merge tags
 
 ---
 
@@ -548,4 +620,5 @@ npm run tauri              # Tauri CLI
 | `src/components/Toolbar.tsx` | Filters + search |
 | `src/components/TrackList.tsx` | Track list with stems |
 | `src/components/PlayerBar.tsx` | Player with waveform |
+| `src/components/SettingsPanel.tsx` | Tag management modal |
 | `src/lib/ui-logic.ts` | Utilities + stubs |

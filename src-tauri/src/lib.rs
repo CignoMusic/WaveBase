@@ -1,3 +1,4 @@
+mod analysis;
 mod commands;
 mod config;
 mod db;
@@ -5,8 +6,9 @@ mod error;
 mod playback;
 mod scanner;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use db::models::TagProgress;
 use db::pool::DbPool;
 use playback::player::AudioPlayer;
 use tauri::Manager;
@@ -21,8 +23,17 @@ pub fn run() {
     db::migrations::run_migrations(&pool.get().expect("Failed to get connection for migrations"))
         .expect("Failed to run database migrations");
 
+    let tag_progress = Arc::new(commands::scan::BackgroundTagState {
+        progress: Arc::new(Mutex::new(TagProgress {
+            total: 0,
+            processed: 0,
+            status: "idle".to_string(),
+        })),
+    });
+
     tauri::Builder::default()
         .manage(pool)
+        .manage(tag_progress)
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let player = AudioPlayer::new();
@@ -30,8 +41,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Scan
             commands::scan::scan_directory,
+            commands::scan::get_tag_progress,
             commands::scan::scan_status,
+            // Playback
             commands::playback::play_audio,
             commands::playback::toggle_playback,
             commands::playback::pause_audio,
@@ -43,12 +57,19 @@ pub fn run() {
             commands::playback::set_duration,
             commands::playback::store_track_duration,
             commands::playback::get_waveform_data,
+            // Library
             commands::library::search_files,
             commands::library::get_file,
             commands::library::list_files,
+            // Tags
             commands::tags::add_tag,
             commands::tags::remove_tag,
-            commands::tags::list_tags,
+            commands::tags::list_file_tags,
+            commands::tags::get_all_tags,
+            commands::tags::create_tag,
+            commands::tags::delete_tag,
+            commands::tags::filter_files_by_tag_names,
+            commands::tags::get_tag_file_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
