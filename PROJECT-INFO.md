@@ -77,31 +77,32 @@ src-tauri/src/
 │
 ├── commands/            # Tauri command handlers (invoke targets)
 │   ├── mod.rs           # Module declarations
-│   ├── scan.rs          # scan_directory, scan_status
-│   ├── library.rs       # search_files, get_file, list_files
-│   ├── playback.rs      # play_audio, toggle_playback, pause_audio, resume_audio, stop_audio, get_playback_status, set_volume, set_duration, store_track_duration, get_waveform_data
-│   └── tags.rs          # add_tag, remove_tag, list_tags
+│   ├── scan.rs          # scan_directory, get_tag_progress — async background tagging pipeline (4 workers, skip-if-analyzed)
+│   ├── library.rs       # list_files, get_file — search_files (stub)
+│   ├── playback.rs      # play_audio, toggle_playback, pause_audio, resume_audio, stop_audio, get_playback_status, set_volume, set_duration, store_track_duration, get_waveform_data, seek_audio
+│   └── tags.rs          # add_tag, remove_tag, list_file_tags, get_all_tags, get_pinned_tags, toggle_tag_pin, create_tag, delete_tag, filter_files_by_tag_names, get_tag_file_count
 │
 ├── db/                  # Database layer
 │   ├── mod.rs           # Module declarations
-│   ├── models.rs        # AudioFile, Tag, FileTag, ScanRoot, ScanProgress, ParsedMetadata
-│   ├── migrations.rs    # Schema: audio_files, tags, file_tags, scan_roots + indexes
+│   ├── models.rs        # AudioFile, Tag, FileTag, ScanRoot, SearchQuery, AudioFileWithTags, TagProgress, ParsedMetadata
+│   ├── migrations.rs    # Schema: audio_files, tags (is_preset, is_pinned, is_metadata), file_tags, scan_roots + indexes
 │   └── pool.rs          # r2d2 SqliteConnectionManager pool (max 4 connections)
 │
 ├── scanner/             # File system scanning
 │   ├── mod.rs           # Module declarations
 │   ├── filesystem.rs    # walkdir-based recursive scan, audio extension filter
-│   └── watcher.rs       # notify-based file watcher (stub)
+│   └── watcher.rs       # notify-based file watcher (stub — not yet used)
 │
 ├── playback/            # Audio playback
 │   ├── mod.rs           # Module declarations
-│   └── player.rs        # AudioPlayer with Rodio — play, pause, resume, stop, toggle, volume, status
+│   ├── player.rs        # AudioPlayer with Rodio — play, pause, resume, stop, toggle, volume, status, seek (PCM pre-decode)
+│   └── waveform.rs      # compute_waveform_peaks — Symphonia peak extraction for frontend canvas
 │
 └── analysis/            # Audio metadata analysis
     ├── mod.rs           # Module declarations
-    ├── parser.rs        # Smart filename parsing (stub with test skeleton)
-    ├── decoder.rs       # Symphonia audio decoding (stub)
-    └── dsp.rs           # stratum-dsp BPM/key analysis (stub)
+    ├── parser.rs        # Smart filename parsing — BPM, key, track type, @artist extraction
+    ├── decoder.rs       # Symphonia audio decoding to mono f32 PCM
+    └── dsp.rs           # stratum-dsp BPM + key detection with confidence threshold
 ```
 
 ### Frontend Components
@@ -114,13 +115,14 @@ src/
 ├── vite-env.d.ts        # Vite client types
 │
 ├── components/
-│   ├── Titlebar.tsx     # Top bar: app name + "Scan Directory" button (uses @tauri-apps/plugin-dialog)
-│   ├── Toolbar.tsx      # Filter pills (All/Beats/Loops/Stems) + search input
-│   ├── TrackList.tsx    # Scrollable track list with collapsible stems, selection, drag handles
+│   ├── Titlebar.tsx     # Top bar: app name + gear (settings) + "Scan Directory" button (uses @tauri-apps/plugin-dialog)
+│   ├── Toolbar.tsx      # Pinned tag pills + Filter dropdown (all tags) + search input + progress bar
+│   ├── TrackList.tsx    # Scrollable track list with collapsible stems, tags column, analyzed(~) indicator, inline tag add/remove
+│   ├── SettingsPanel.tsx# Tag manager modal: add/delete tags, pin/unpin toggle, file counts
 │   └── PlayerBar.tsx    # Bottom player: transport controls, waveform canvas, progress, volume
 │
 └── lib/
-    └── ui-logic.ts      # Utilities: formatTime, waveform generation/rendering, state factory stubs
+    └── ui-logic.ts      # Utilities: formatTime, waveform generation/rendering, TagInfo/TagProgress types
 ```
 
 ### Data Flow
@@ -190,34 +192,39 @@ scan_roots (
 
 ---
 
-## 5. Current State (Session 9)
+## 5. Current State (Session 10)
 
 ### ✅ Working / Stable
 - App launches, shows full UI
 - "Scan Directory" picks a folder, scans for audio files, returns results
 - Files inserted into SQLite `audio_files` table
-- UI renders: Titlebar, Toolbar with filters, TrackList with mock data, PlayerBar with waveform canvas
+- UI renders: Titlebar, Toolbar with filters, TrackList, PlayerBar with waveform canvas
 - Selection state, stem expansion work
 - Database connection pool, migrations, schema all set up
 - Custom dark theme CSS complete (no Tailwind utility classes used yet)
 - Clean app data dir management (%APPDATA%/wavebase, ~/Library/Application Support/wavebase)
 - **Real audio playback via Rodio** — play, pause, resume, stop, volume control all working
 - **Playback position & duration tracking** — position counter, playhead, and progress fill all update in real time
-- **Track `path` field** — added to Track interface, used for playback targeting
 - **Next/prev track navigation** — prev restarts track first click, then goes to previous; next wraps around
 - **Smart prev button** — first click restarts current track, second click goes to previous
 - **Real waveform from audio data** — waveform peaks extracted via Symphonia on the Rust backend, replaces synthetic sine waves
 - **DB-stored track duration** — real duration saved to `audio_files.duration_secs` when waveform decode completes; used on subsequent plays for instant accurate progress
 - **Click-to-seek** — click on progress bar or waveform canvas to seek to any position; uses pre-decoded PCM buffer for instant O(1) seeking
 - **Keyboard shortcuts** — Space/MediaPlayPause toggles play/pause, MediaNextTrack/MediaPreviousTrack and Ctrl+Arrow for track navigation; suppressed when typing in input fields
-- **Filename parser** — `analysis/parser.rs` extracts BPM, key, track type, artist from filenames during scanning
-- **Audio analysis fallback** — `analysis/decoder.rs` (Symphonia PCM decode) + `analysis/dsp.rs` (stratum-dsp BPM/key detection) fills gaps when filename doesn't provide metadata
-- **Tag CRUD** — `commands/tags.rs` fully implemented: add, remove, list, create, delete, and AND-match filtering by tag names
-- **Async background tagging** — scan returns files instantly (fast), then background thread parses filenames + analyzes audio + auto-creates tags; progress bar in toolbar shows status
-- **Dynamic filter pills** — Toolbar shows real tags from DB as clickable filters, multi-select with AND logic
-- **Tag management settings** — `SettingsPanel.tsx` modal for adding/removing tags
-- **Analyzed indicator** — BPM/key values from audio analysis show a subtle ~ icon (tooltip: "From audio analysis")
-- **TrackList persistence** — `list_files` command reads from DB; tracks persist across app restarts
+- **Filename parser** — `analysis/parser.rs` extracts BPM, key, track type, @artist(s) from filenames; conservative matching, tokens in any order
+- **Audio analysis fallback** — `analysis/decoder.rs` (Symphonia PCM decode) + `analysis/dsp.rs` (stratum-dsp BPM/key) fills gaps when filename doesn't provide metadata
+- **Tag CRUD** — `commands/tags.rs`: add, remove, list, create, delete, AND-filter, pin/unpin, get_pinned_tags, get_tag_file_count
+- **Async background tagging** — scan returns instantly, then 4 parallel background threads parse filenames + analyze audio + auto-create metadata tags; progress bar polls every 300ms
+- **Pinned filter pills** — Toolbar shows only PINNED tags as clickable pills; Filter dropdown shows ALL tags with checkboxes; AND-matching
+- **Tag manager settings** — `SettingsPanel.tsx`: add/delete tags, pin/unpin toggle, file counts, preset badge
+- **Settings gear button** — `Titlebar.tsx`: gear icon opens settings modal
+- **Analyzed indicator (~)** — BPM/key from audio analysis show ~ icon (tooltip: "From audio analysis")
+- **TrackList persistence** — `list_files` reads from DB; tracks persist across restarts
+- **Metadata tags hidden from tags column** — BPM/Key/Duration auto-tags (is_metadata=1) not shown in tags column; BPM/Key have their own columns
+- **Auto-detected tags** — BPM ("140 BPM"), Key ("D Minor"), Duration ("0:32"), Artist ("@username") auto-created and marked as metadata; track type tags (Loop, Beat, Stem, OneShot) are presets, pinned by default
+- **Background tagging progress** — Toolbar shows progress bar "Tagging: 3/5" → "✓ Tagged" when complete; files re-fetched from DB to show analyzed BPM/key values
+- **Parallel background processing** — 4 worker threads for faster tagging with `AtomicUsize` progress tracking
+- **DB migrations** — `PRAGMA table_info` checks + `ALTER TABLE ADD COLUMN` for upgrading existing DBs; seeds preset tags + pins
 
 ### ⚠️ Partial / Needs Wiring
 | Component | Issue | Details |
@@ -228,10 +235,11 @@ scan_roots (
 ### ⬜ Not Yet Implemented (Stubs)
 | Module | Files | What's Missing |
 |--------|-------|----------------|
-| **File watcher** | `scanner/watcher.rs` | Real-time filesystem monitoring |
+| **File watcher** | `scanner/watcher.rs` | Real-time filesystem monitoring via notify |
 | **Bundle detection** | Not started | Group related files by folder |
 | **Settings persistence** | `config.rs` has path | No TOML read/write yet |
-| **Search** | `commands/library.rs:search_files` | Proper SQLite full-text search |
+| **Search** | `commands/library.rs:search_files` | Proper SQLite full-text search across filename, tags, BPM, key, artist |
+| **Customizable columns** | Not started | Add/remove/reorder tag columns (TrackList grid is hardcoded) |
 
 ---
 
@@ -283,8 +291,17 @@ scan_roots (
 - [x] Tag management (add, delete tags in settings panel)
 - [x] Multi-tag AND-filtering
 - [x] Auto-detected values stored as editable tags
+- [x] Pinned/unpinned tag pills (toolbar only shows pinned)
+- [x] Metadata tags (BPM/Key/Artist) hidden from tags column
+- [x] Settings gear button in titlebar
+- [x] Pin/unpin toggle in tag manager
+- [x] Background parallel tagging (4 workers) with progress bar
+- [x] Analyzed indicator (~) for analysis-originated values
+- [x] Multiple @artist detection and tagging
+- [x] DB migration logic (PRAGMA + ALTER TABLE) for existing databases
 - [ ] Tag colors (schema supports it, UI deferred)
-- [ ] Tag rename/merge (UI deferred)
+- [ ] Tag rename/merge (settings panel deferred)
+- [ ] Customizable columns (add/remove/reorder tag columns — deferred to future session)
 
 ### Feature 6: Bundle Detection ⬜
 - [ ] Detect related files sharing a parent folder
@@ -348,7 +365,7 @@ scan_roots (
 - Dark theme is default and only theme implemented
 - No Tailwind utility classes used in component files — all styling via `index.css` class names
 - DAW-inspired design: dark backgrounds, monospace for BPM/key, colored dots for file type
-- Grid layout for track rows: `32px 28px 1fr 72px 96px 1fr` (drag-handle, dot, name, bpm, key, artists)
+- Grid layout for track rows: `32px 28px 1fr 72px 96px 1fr minmax(100px, 1.2fr)` (drag-handle, dot, name, bpm, key, artists, tags)
 
 ### Audio Formats Supported
 `wav`, `mp3`, `aiff`, `aif`, `flac`, `ogg`, `m4a`, `wma`
@@ -434,6 +451,67 @@ npm run tauri              # Tauri CLI
 - **Fixed playhead not moving** — added Symphonia probe fallback (`probe_duration`) in `player.rs:140` to determine audio file duration when Rodio's `total_duration()` returns `None`
 - Added frontend safety net (`maxPositionRef`) for the edge case where even Symphonia probing fails
 
+### Session 10 — Pinning, Metadata Tags, Parallel Processing & Frontend Polish
+
+**Backend — DB Schema & Migrations (`db/migrations.rs`, `db/models.rs`):**
+- `tags` table: added `is_pinned INTEGER NOT NULL DEFAULT 0`, `is_metadata INTEGER NOT NULL DEFAULT 0`
+- `ParsedMetadata`: `artists` changed from `Option<String>` to `Vec<String>` for multiple @artist support
+- Migration uses `PRAGMA table_info` + `ALTER TABLE ADD COLUMN` for existing DB upgrades
+- Seeds preset tags (Loop, Beat, Stem, OneShot) with `is_pinned=1` via `INSERT OR IGNORE`
+
+**Backend — Tags Commands (`commands/tags.rs`):**
+- Added `get_pinned_tags` — returns only tags where `is_pinned=1`
+- Added `toggle_tag_pin` — flips `is_pinned`, returns updated `Tag`
+- `list_file_tags` accepts optional `exclude_metadata` parameter
+- `create_tag` sets `is_preset=0, is_pinned=0` for user-created tags
+- Auto-created BPM/Key/Duration/Artist tags now set `is_metadata=1`
+- `Tag` struct now includes `is_preset`, `is_pinned`, `is_metadata` fields
+- `TAG_COLS` constant keeps all SELECT/INSERT column lists consistent
+
+**Backend — Background Tagging (`commands/scan.rs`):**
+- **Parallel processing:** replaced serial loop with 4 concurrent worker threads using `Arc<Vec<Mutex>>` for DB pools
+- **Skip-if-analyzed:** files with both bpm and key already set skip audio analysis entirely (speedup for re-scans)
+- **Progress tracking:** swapped `Arc<Mutex<TagProgress>>` for `Arc<(AtomicUsize, AtomicUsize)>` — lock-free progress reads
+- Auto-tags for BPM ("140 BPM", `is_metadata=1`), Key ("D Minor", `is_metadata=1`), Duration ("0:32", `is_metadata=1`), Artist ("@username", `is_metadata=1`)
+- Track type tags (Loop, Beat, Stem, OneShot) remain `is_metadata=0`, `is_preset=1`
+
+**Backend — Filename Parser (`analysis/parser.rs`):**
+- Multiple @artist support: `artists: Vec<String>` collects all `@mention` tokens
+- Added `test_parse_multiple_artists` test (11 total parser tests, all pass)
+
+**Frontend — App.tsx:**
+- Computes `pinnedTags = allTags.filter(t => t.isPinned)` for toolbar pills
+- Added `loadAllFileTagsRef` to avoid stale closure in progress polling interval
+- After background tagging completes: re-fetches file list from DB to show updated BPM/key values
+- Passes `pinnedTags` + `allTags` separately to Toolbar
+- Passes `onOpenSettings` to Titlebar for gear button
+
+**Frontend — Toolbar.tsx:**
+- Now accepts `pinnedTags` and `allTags` as separate props
+- Pills show only `pinnedTags` (no slice/limit — all pinned tags shown)
+- Filter dropdown still shows ALL `allTags` with checkboxes
+- Removed the "+N" overflow button (no longer needed — pinned set is curated)
+
+**Frontend — TrackList.tsx:**
+- Tags column filters display tags with `displayTags(track)` → `getTags(track).filter(t => !t.isMetadata)`
+- Metadata tags (BPM/Key/Duration/Artist) hidden from tags column
+- Add-tag dropdown still uses `getTags(track)` (all tags) for "already have" check
+- Import uses `TagInfo` from `ui-logic.ts`
+
+**Frontend — Titlebar.tsx:**
+- Added `onOpenSettings` prop
+- Gear icon button before "Scan Directory": opens settings modal for tag management
+
+**Frontend — SettingsPanel.tsx:**
+- Added `handleTogglePin(tagId)` calling `toggle_tag_pin` command
+- Each tag row shows "Pin" / "Pinned" toggle button
+- Pinned state reflected in real time (blue "Pinned" text)
+- Layout kept minimal: name, file count, pin toggle, delete/preset badge
+
+**Frontend — index.css:**
+- `.settings-pin-btn` — pin/unpin toggle styling with `.pinned` modifier (blue text)
+- `.titlebar-actions` already flex-row, gear button sits left of scan button
+
 ### Session 9 — Tagging & Filtering System
 
 **Backend — Filename Parser (`analysis/parser.rs`):**
@@ -452,8 +530,10 @@ npm run tauri              # Tauri CLI
 - `remove_tag` — unlink tag from file
 - `list_file_tags` — all tags for a given file path
 - `get_all_tags` — all tags in the system (for filter pills)
+- `get_pinned_tags` / `toggle_tag_pin` — pin management for toolbar
 - `create_tag` / `delete_tag` — explicit tag management (for settings panel)
 - `filter_files_by_tag_names` — AND-match: file must have ALL specified tags
+- `get_tag_file_count` — number of files tagged with a given tag
 
 **Backend — Async Background Tagging (`commands/scan.rs`):**
 - `scan_directory` stays fast: walkdir + INSERT files, spawns background thread, returns immediately
@@ -483,11 +563,10 @@ npm run tauri              # Tauri CLI
 - Search input → `onSearchChange` callback
 
 **Frontend — TrackList.tsx:**
-- Added 7th "Tags" column (comma-separated text, no colored pills)
-- Row hover shows "+" button → opens mini tag picker dropdown with checkboxes
+- Added 7th "Tags" column
+- Row hover shows "+" button → opens mini tag picker dropdown
 - Tag names have hover "×" to remove from file
 - Analyzed indicator: small `~` after BPM/key values when `bpm_analyzed=1`/`key_analyzed=1`
-- EMPTY values still show `—` (unchanged from before)
 
 **Frontend — SettingsPanel.tsx:**
 - Modal overlay for tag management
@@ -495,18 +574,13 @@ npm run tauri              # Tauri CLI
 - Preset tags shown with locked badge, delete disabled
 - "Add Tag" form (name input)
 - Delete shows confirmation with file count
-- Accessible from Filter dropdown and TrackList tag editor
 
 **Frontend — index.css:**
-- `.tag-list` — flex row for tags column
-- `.tag-add-btn` — small + button on row hover
-- `.tag-dropdown` — compact dropdown for tag picker
-- `.analysis-hint` — subtle ~ indicator with tooltip
-- `.filter-dropdown` — checkbox list for multi-select filtering
-- `.tag-progress` — compact progress bar in toolbar
-- `.settings-overlay` / `.settings-panel` — tag manager modal
+- `.tag-list`, `.tag-add-btn`, `.tag-dropdown`, `.analysis-hint` — tag column styles
+- `.filter-dropdown`, `.filter-option`, `.filter-dropdown-footer` — multi-select filter dropdown
+- `.tag-progress`, `.tag-progress-bar`, `.tag-progress-fill`, `.tag-progress-done` — progress bar
+- `.settings-overlay`, `.settings-panel`, `.settings-row`, `.settings-row-actions` — settings modal
 - Updated `.col-header` / `.row` grid to 7 columns (added tags column)
-- `.filter-btn` extracted from generic `.tool-btn` for the Filter button
 
 ### Session 8 — Global Keyboard Shortcuts
 - **Added global keydown handler** in `App.tsx` — listens for `Space`, `MediaPlayPause`, `MediaNextTrack`, `MediaPreviousTrack`, and `Ctrl+ArrowLeft`/`Ctrl+ArrowRight`
@@ -562,15 +636,15 @@ npm run tauri              # Tauri CLI
 ## 10. Session Priority (Next Session)
 
 ### Immediate Next Steps
-1. **Wire search** — Implement `search_files` backend (SQLite LIKE query across filename/tags/BPM/key) + debounced frontend wiring
-2. **Incremental scanning** — Only scan new/changed files based on `modified_at`
+1. **Customizable columns** — Add/remove/reorder tag columns in TrackList grid (currently hardcoded 7 columns). User can choose which columns to display and in what order. Settings panel option to configure columns.
 
 ### Medium Priority
-3. Bundle detection — Group related files by folder, collapsible UI
-4. File watcher — Real-time filesystem monitoring via `notify`
-5. Settings persistence — TOML read/write via `config.rs`
+2. **Wire search** — Implement `search_files` backend (SQLite LIKE query across filename/tags/BPM/key) + debounced frontend wiring
+3. **Bundle detection** — Group related files by folder, collapsible UI
+4. **File watcher** — Real-time filesystem monitoring via `notify`
 
 ### Lower Priority (but needed)
+5. Settings persistence — TOML read/write via `config.rs`
 6. Tag colors (already in schema, needs UI in settings)
 7. Tag rename/merge (settings panel)
 8. Clean install/uninstall configuration
@@ -579,14 +653,17 @@ npm run tauri              # Tauri CLI
 
 ## 11. Known Issues & Gotchas
 
-- **Audio analysis is blocking (tokio::task::spawn_blocking):** `analysis/decoder.rs` and `analysis/dsp.rs` run on tokio's blocking thread pool. Each file decoded serially in the background tagging thread. For very large libraries (>500 files), this could take minutes. Acceptable for v1.
+- **Audio analysis is blocking (tokio::task::spawn_blocking):** `analysis/decoder.rs` and `analysis/dsp.rs` run on tokio's blocking thread pool. 4 parallel background worker threads mitigate this for large libraries, but 500+ files could still take minutes. Acceptable for v1.
 - **stratum-dsp analysis may be inaccurate for non-musical content:** BPM/key detection works best on structured music. Sound effects, dialogue, or ambient recordings may produce unreliable results. The ~ indicator warns users.
-- **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — consider replacing with proper chrono or time crate
-- **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings (the existing code may not compile under tsc --noEmit cleanly)
-- **Holding Ctrl+Arrow fires rapid track switching:** Keyboard handler has no debounce/throttle. Holding Ctrl+Arrow rapidly cycles through tracks, each firing play_audio + PCM decode. Lags briefly as decode threads queue up. Acceptable for normal use; holding the keys is an edge case
-- **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX
-- **Search not wired:** `search_files` command is still a stub — search input in Toolbar is frontend-only
-- **Tag rename/merge not implemented:** Settings panel only supports add/delete, not rename or merge tags
+- **`chrono_from_system_time` in filesystem.rs:** Custom ISO 8601 formatting is fragile (doesn't account for leap years, doesn't use chrono crate) — replace with proper chrono or time crate.
+- **No `noUnusedLocals` exemption:** tsconfig has strict unused locals/params checks — currently some stubs trigger warnings.
+- **Holding Ctrl+Arrow fires rapid track switching:** Keyboard handler has no debounce/throttle. Holding Ctrl+Arrow rapidly cycles through tracks, each firing play_audio + PCM decode. Acceptable for normal use.
+- **Tailwind not used in components:** All styling is via `index.css` classes, no Tailwind utility classes in JSX.
+- **Search not wired:** `search_files` command is still a stub — search input in Toolbar is frontend-only.
+- **Tag rename/merge not implemented:** Settings panel only supports add/delete, not rename or merge tags.
+- **Customizable columns deferred:** TrackList grid is hardcoded to 7 columns. Add/remove/reorder of tag columns is a future feature.
+- **Stale `tracks` closure in interval callback (App.tsx:119):** The tag progress polling interval captures `tracks` via `loadAllFileTagsRef.current` to avoid stale closure issues; but if a scan completes while no interval is running, tracks could be stale. Acceptable for v1.
+- **File re-fetch after tagging may not preserve UI state:** After background tagging completes, the entire track list is re-fetched from DB, which loses the scroll position and expansion state. Noted for future improvement.
 
 ---
 
@@ -610,15 +687,20 @@ npm run tauri              # Tauri CLI
 | `src-tauri/src/lib.rs` | Tauri setup, state, command registration |
 | `src-tauri/src/config.rs` | Data directory paths |
 | `src-tauri/src/error.rs` | AppError enum |
-| `src-tauri/src/db/migrations.rs` | SQL schema |
-| `src-tauri/src/db/models.rs` | Rust structs for DB entities |
-| `src-tauri/src/db/pool.rs` | r2d2 connection pool |
-| `src-tauri/src/scanner/filesystem.rs` | Directory scanner |
-| `src/App.tsx` | Root React component |
-| `src/index.css` | All styles (521 lines) |
-| `src/components/Titlebar.tsx` | Scan button + app title |
-| `src/components/Toolbar.tsx` | Filters + search |
-| `src/components/TrackList.tsx` | Track list with stems |
-| `src/components/PlayerBar.tsx` | Player with waveform |
-| `src/components/SettingsPanel.tsx` | Tag management modal |
-| `src/lib/ui-logic.ts` | Utilities + stubs |
+| `src-tauri/src/db/migrations.rs` | SQL schema + migration logic (PRAGMA + ALTER TABLE for upgrades) |
+| `src-tauri/src/db/models.rs` | Rust structs for DB entities (AudioFile, Tag, FileTag, TagProgress, ParsedMetadata) |
+| `src-tauri/src/db/pool.rs` | r2d2 connection pool (max 4) |
+| `src-tauri/src/scanner/filesystem.rs` | Directory scanner (walkdir) |
+| `src-tauri/src/scanner/watcher.rs` | File watcher (stub, notify-based) |
+| `src-tauri/src/analysis/parser.rs` | Filename BPM/key/type/artist parser (11 tests) |
+| `src-tauri/src/analysis/decoder.rs` | Symphonia PCM decode to mono f32 |
+| `src-tauri/src/analysis/dsp.rs` | stratum-dsp BPM + key detection |
+| `src-tauri/src/commands/tags.rs` | Full tag CRUD + pin/filter/count commands |
+| `src-tauri/src/commands/scan.rs` | Async background tagging (4 workers, progress) |
+| `src/App.tsx` | Root React component — orchestrates scanning, filtering, tagging, selection |
+| `src/index.css` | All styles (~860 lines) |
+| `src/components/Titlebar.tsx` | App title + gear (settings) + scan button |
+| `src/components/Toolbar.tsx` | Pinned pills + filter dropdown + progress bar + search |
+| `src/components/TrackList.tsx` | 7-column track list with tags, analyzed indicator, inline tag add/remove |
+| `src/components/SettingsPanel.tsx` | Tag management modal (add/delete, pin/unpin, file counts) |
+| `src/components/PlayerBar.tsx` | Transport controls + waveform canvas + progress |

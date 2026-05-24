@@ -639,6 +639,14 @@ html, body {
   color: var(--orange) !important;
 }
 
+.settings-pin-btn {
+  min-width: 44px;
+}
+
+.settings-pin-btn.pinned {
+  color: var(--blue) !important;
+}
+
 .settings-footer {
   display: flex;
   gap: 6px;

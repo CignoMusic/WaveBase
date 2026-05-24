@@ -26,6 +26,8 @@ pub struct Tag {
     pub name: String,
     pub color: Option<String>,
     pub is_preset: bool,
+    pub is_pinned: bool,
+    pub is_metadata: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +69,7 @@ pub struct ParsedMetadata {
     pub track_name: Option<String>,
     pub bpm: Option<i32>,
     pub key: Option<String>,
-    pub artist: Option<String>,
+    pub artists: Vec<String>,
     pub track_type: Option<String>,
 }
 

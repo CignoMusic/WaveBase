@@ -45,6 +45,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fileTags, setFileTags] = useState<Record<string, TagInfo[]>>({});
   const progressPollRef = useRef<number>(0);
+  const loadAllFileTagsRef = useRef<(paths: string[]) => Promise<void>>(async () => {});
 
   const getFlatTracks = useCallback((): Track[] => {
     const flat: Track[] = [];
@@ -62,6 +63,8 @@ function App() {
     ...t,
     tags: fileTags[t.path] ?? t.tags,
   }));
+
+  const pinnedTags = allTags.filter((t) => t.isPinned);
 
   const filteredTracks = activeTagNames.length === 0
     ? tracksWithTags
@@ -82,6 +85,8 @@ function App() {
     }
     setFileTags((prev) => ({ ...prev, ...map }));
   }, []);
+
+  loadAllFileTagsRef.current = loadAllFileTags;
 
   // Fetch tags and files on mount
   useEffect(() => {
@@ -122,7 +127,23 @@ function App() {
             clearInterval(progressPollRef.current);
             progressPollRef.current = 0;
             invoke<TagInfo[]>('get_all_tags').then(setAllTags).catch(console.error);
-            loadAllFileTags(tracks.map((t) => t.path));
+            invoke<AudioFile[]>('list_files', { limit: 5000, offset: 0 })
+              .then(async (files) => {
+                const mapped: Track[] = files.map((f) => ({
+                  id: f.path,
+                  name: f.filename,
+                  path: f.path,
+                  bpm: f.bpm,
+                  key: f.key ?? '',
+                  artists: f.artist ?? '',
+                  bpmAnalyzed: f.bpm_analyzed,
+                  keyAnalyzed: f.key_analyzed,
+                  dotColor: (f.extension === 'wav' || f.extension === 'aiff' || f.extension === 'aif') ? 'green' as const : 'orange' as const,
+                }));
+                setTracks(mapped);
+                loadAllFileTagsRef.current(mapped.map((t) => t.path));
+              })
+              .catch(console.error);
           }
         } catch (e) {
           console.error('Tag progress poll failed:', e);
@@ -135,7 +156,7 @@ function App() {
         progressPollRef.current = 0;
       }
     };
-  }, [tagProgress?.status, loadAllFileTags, tracks]);
+  }, [tagProgress?.status]);
 
   const handleScanDirectory = async (path: string) => {
     try {
@@ -273,9 +294,10 @@ function App() {
 
   return (
     <div className="app">
-      <Titlebar onScanDirectory={handleScanDirectory} />
+      <Titlebar onScanDirectory={handleScanDirectory} onOpenSettings={() => setShowSettings(true)} />
       <Toolbar
-        tags={allTags}
+        pinnedTags={pinnedTags}
+        allTags={allTags}
         activeTagNames={activeTagNames}
         onTagToggle={handleTagToggle}
         tagProgress={tagProgress}

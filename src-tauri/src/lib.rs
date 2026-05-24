@@ -66,6 +66,8 @@ pub fn run() {
             commands::tags::remove_tag,
             commands::tags::list_file_tags,
             commands::tags::get_all_tags,
+            commands::tags::get_pinned_tags,
+            commands::tags::toggle_tag_pin,
             commands::tags::create_tag,
             commands::tags::delete_tag,
             commands::tags::filter_files_by_tag_names,

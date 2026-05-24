@@ -147,6 +147,8 @@ export interface TagInfo {
   name: string;
   color: string | null;
   isPreset: boolean;
+  isPinned: boolean;
+  isMetadata: boolean;
 }
 
 export interface TagProgress {

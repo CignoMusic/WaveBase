@@ -13,7 +13,7 @@ pub fn parse_filename(filename: &str) -> ParsedMetadata {
 
     let mut bpm: Option<i32> = None;
     let mut key: Option<String> = None;
-    let mut artist: Option<String> = None;
+    let mut artists: Vec<String> = Vec::new();
     let mut track_type: Option<String> = None;
     let mut used_indices: Vec<usize> = Vec::new();
 
@@ -29,12 +29,12 @@ pub fn parse_filename(filename: &str) -> ParsedMetadata {
         }
     }
 
-    // Artist detection: @username
+    // Artist detection: @username (all @mentions)
     for (i, w) in words.iter().enumerate() {
         if w.starts_with('@') && w.len() > 1 {
             let name = w[1..].trim_matches(|c: char| !c.is_alphanumeric() && c != '.' && c != '_');
             if !name.is_empty() {
-                artist = Some(name.to_string());
+                artists.push(name.to_string());
                 used_indices.push(i);
             }
         }
@@ -115,7 +115,7 @@ pub fn parse_filename(filename: &str) -> ParsedMetadata {
         track_name: track_name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         bpm,
         key,
-        artist,
+        artists,
         track_type,
     }
 }
@@ -206,7 +206,13 @@ mod tests {
     #[test]
     fn test_parse_artist() {
         let r = parse_filename("track @producer.wav");
-        assert_eq!(r.artist, Some("producer".to_string()));
+        assert_eq!(r.artists, vec!["producer".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_multiple_artists() {
+        let r = parse_filename("collab @artist1 @artist2.wav");
+        assert_eq!(r.artists, vec!["artist1".to_string(), "artist2".to_string()]);
     }
 
     #[test]
@@ -215,7 +221,7 @@ mod tests {
         assert_eq!(r.bpm, Some(140));
         assert_eq!(r.key, Some("D Minor".to_string()));
         assert_eq!(r.track_type, Some("Loop".to_string()));
-        assert_eq!(r.artist, Some("user".to_string()));
+        assert_eq!(r.artists, vec!["user".to_string()]);
     }
 
     #[test]
@@ -223,7 +229,7 @@ mod tests {
         let r = parse_filename("unknown file.wav");
         assert_eq!(r.bpm, None);
         assert_eq!(r.key, None);
-        assert_eq!(r.artist, None);
+        assert!(r.artists.is_empty());
         assert_eq!(r.track_type, None);
     }
 

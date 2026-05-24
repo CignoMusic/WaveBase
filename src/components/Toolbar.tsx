@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import type { TagInfo, TagProgress } from '../lib/ui-logic';
 
 interface ToolbarProps {
-  tags: TagInfo[];
+  pinnedTags: TagInfo[];
+  allTags: TagInfo[];
   activeTagNames: string[];
   onTagToggle: (tagName: string) => void;
   tagProgress: TagProgress | null;
@@ -12,7 +13,8 @@ interface ToolbarProps {
 }
 
 export default function Toolbar({
-  tags,
+  pinnedTags,
+  allTags,
   activeTagNames,
   onTagToggle,
   tagProgress,
@@ -47,7 +49,7 @@ export default function Toolbar({
       >
         All
       </button>
-      {tags.slice(0, 8).map((tag) => (
+      {pinnedTags.map((tag) => (
         <button
           key={tag.id}
           className={`tool-btn${activeTagNames.includes(tag.name) ? ' active' : ''}`}
@@ -56,11 +58,6 @@ export default function Toolbar({
           {tag.name}
         </button>
       ))}
-      {tags.length > 8 && (
-        <button className="tool-btn" onClick={() => setShowFilter(true)}>
-          +{tags.length - 8}
-        </button>
-      )}
       <div className="toolbar-sep" />
       <div className="filter-wrap" ref={filterRef}>
         <button
@@ -75,7 +72,7 @@ export default function Toolbar({
         </button>
         {showFilter && (
           <div className="filter-dropdown">
-            {tags.map((tag) => (
+            {allTags.map((tag) => (
               <label key={tag.id} className="filter-option">
                 <input
                   type="checkbox"

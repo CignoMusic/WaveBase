@@ -43,7 +43,9 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS tags (
             id    INTEGER PRIMARY KEY AUTOINCREMENT,
             name  TEXT NOT NULL UNIQUE,
-            color TEXT
+            color TEXT,
+            is_pinned INTEGER NOT NULL DEFAULT 0,
+            is_metadata INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS file_tags (
@@ -79,11 +81,18 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
         )?;
     }
 
-    // Seed preset tags if they don't exist
+    if !has_column(conn, "tags", "is_pinned")? {
+        conn.execute_batch(
+            "ALTER TABLE tags ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE tags ADD COLUMN is_metadata INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+
+    // Seed preset tags if they don't exist (and pin them by default)
     let presets = ["Loop", "Beat", "Stem", "OneShot"];
     for name in &presets {
         conn.execute(
-            "INSERT OR IGNORE INTO tags (name, is_preset) VALUES (?1, 1)",
+            "INSERT OR IGNORE INTO tags (name, is_preset, is_pinned) VALUES (?1, 1, 1)",
             rusqlite::params![name],
         )?;
     }

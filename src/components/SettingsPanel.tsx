@@ -52,6 +52,17 @@ export default function SettingsPanel({ tags, onTagsChange, onClose }: SettingsP
     }
   }, [tags, onTagsChange, fileCounts]);
 
+  const handleTogglePin = useCallback(async (tagId: number) => {
+    const tag = tags.find((t) => t.id === tagId);
+    if (!tag) return;
+    try {
+      const updated = await invoke<TagInfo>('toggle_tag_pin', { tagId });
+      onTagsChange(tags.map((t) => (t.id === tagId ? updated : t)));
+    } catch (e) {
+      console.error('Toggle pin failed:', e);
+    }
+  }, [tags, onTagsChange]);
+
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
@@ -71,6 +82,13 @@ export default function SettingsPanel({ tags, onTagsChange, onClose }: SettingsP
                 <span className="settings-tag-count">{fileCounts[tag.id] ?? 0} file(s)</span>
               </div>
               <div className="settings-row-actions">
+                <button
+                  className={`tool-btn settings-pin-btn${tag.isPinned ? ' pinned' : ''}`}
+                  onClick={() => handleTogglePin(tag.id)}
+                  title={tag.isPinned ? 'Unpin from toolbar' : 'Pin to toolbar'}
+                >
+                  {tag.isPinned ? 'Pinned' : 'Pin'}
+                </button>
                 {tag.isPreset ? (
                   <span className="settings-preset-badge" title="Preset tag">Preset</span>
                 ) : (

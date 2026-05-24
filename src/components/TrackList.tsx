@@ -65,6 +65,8 @@ export default function TrackList({
 
   const getTags = (track: Track): TagInfo[] => fileTags[track.path] ?? track.tags ?? [];
 
+  const displayTags = (track: Track): TagInfo[] => getTags(track).filter((t) => !t.isMetadata);
+
   return (
     <>
       <div className="col-header">
@@ -78,7 +80,7 @@ export default function TrackList({
       </div>
       <div className="track-list">
         {tracks.map((track) => {
-          const tags = getTags(track);
+          const tags = displayTags(track);
           return (
             <div key={track.id}>
               <div
@@ -149,7 +151,7 @@ export default function TrackList({
                     {addTagFor === track.path && (
                       <div className="tag-dropdown" ref={addTagRef}>
                         {allTags
-                          .filter((t) => !tags.some((ft) => ft.id === t.id))
+                          .filter((t) => !getTags(track).some((ft) => ft.id === t.id))
                           .map((tag) => (
                             <button
                               key={tag.id}

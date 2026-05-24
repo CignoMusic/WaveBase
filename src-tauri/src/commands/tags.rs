@@ -6,6 +6,19 @@ use crate::db::models::Tag;
 use crate::db::pool::DbPool;
 use crate::error::AppError;
 
+const TAG_COLS: &str = "id, name, color, is_preset, is_pinned, is_metadata";
+
+fn row_to_tag(row: &rusqlite::Row) -> rusqlite::Result<Tag> {
+    Ok(Tag {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        color: row.get(2)?,
+        is_preset: row.get::<_, i32>(3)? != 0,
+        is_pinned: row.get::<_, i32>(4)? != 0,
+        is_metadata: row.get::<_, i32>(5)? != 0,
+    })
+}
+
 fn file_id_from_path(conn: &rusqlite::Connection, path: &str) -> Result<i64, AppError> {
     conn.query_row(
         "SELECT id FROM audio_files WHERE path = ?1",
@@ -16,25 +29,16 @@ fn file_id_from_path(conn: &rusqlite::Connection, path: &str) -> Result<i64, App
 }
 
 fn find_or_create_tag(conn: &rusqlite::Connection, name: &str) -> Result<Tag, AppError> {
-    // Try to find existing tag
     if let Ok(tag) = conn.query_row(
-        "SELECT id, name, color, is_preset FROM tags WHERE name = ?1",
+        &format!("SELECT {} FROM tags WHERE name = ?1", TAG_COLS),
         rusqlite::params![name],
-        |row| {
-            Ok(Tag {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                is_preset: row.get::<_, i32>(3)? != 0,
-            })
-        },
+        row_to_tag,
     ) {
         return Ok(tag);
     }
 
-    // Create new tag
     conn.execute(
-        "INSERT INTO tags (name, color, is_preset) VALUES (?1, NULL, 0)",
+        "INSERT INTO tags (name, color, is_preset, is_pinned, is_metadata) VALUES (?1, NULL, 0, 0, 0)",
         rusqlite::params![name],
     )?;
 
@@ -44,6 +48,8 @@ fn find_or_create_tag(conn: &rusqlite::Connection, name: &str) -> Result<Tag, Ap
         name: name.to_string(),
         color: None,
         is_preset: false,
+        is_pinned: false,
+        is_metadata: false,
     })
 }
 
@@ -86,39 +92,31 @@ pub fn remove_tag(
 pub fn list_file_tags(
     pool: State<'_, Arc<DbPool>>,
     file_path: Option<String>,
+    exclude_metadata: Option<bool>,
 ) -> Result<Vec<Tag>, AppError> {
     let conn = pool.get()?;
+    let skip_meta = exclude_metadata.unwrap_or(false);
 
     let tags = if let Some(path) = file_path {
         let file_id = file_id_from_path(&conn, &path)?;
-        let mut stmt = conn.prepare(
-            "SELECT t.id, t.name, t.color, t.is_preset
-             FROM tags t
-             JOIN file_tags ft ON t.id = ft.tag_id
-             WHERE ft.file_id = ?1
-             ORDER BY t.name",
-        )?;
-        let rows = stmt.query_map(rusqlite::params![file_id], |row| {
-            Ok(Tag {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                is_preset: row.get::<_, i32>(3)? != 0,
-            })
-        })?;
+        let sql = if skip_meta {
+            format!(
+                "SELECT {} FROM tags t JOIN file_tags ft ON t.id = ft.tag_id WHERE ft.file_id = ?1 AND t.is_metadata = 0 ORDER BY t.name",
+                TAG_COLS
+            )
+        } else {
+            format!(
+                "SELECT {} FROM tags t JOIN file_tags ft ON t.id = ft.tag_id WHERE ft.file_id = ?1 ORDER BY t.name",
+                TAG_COLS
+            )
+        };
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params![file_id], row_to_tag)?;
         rows.filter_map(|r| r.ok()).collect()
     } else {
-        let mut stmt = conn.prepare(
-            "SELECT id, name, color, is_preset FROM tags ORDER BY name",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(Tag {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                is_preset: row.get::<_, i32>(3)? != 0,
-            })
-        })?;
+        let sql = format!("SELECT {} FROM tags ORDER BY name", TAG_COLS);
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], row_to_tag)?;
         rows.filter_map(|r| r.ok()).collect()
     };
 
@@ -130,21 +128,48 @@ pub fn get_all_tags(
     pool: State<'_, Arc<DbPool>>,
 ) -> Result<Vec<Tag>, AppError> {
     let conn = pool.get()?;
-    let mut stmt = conn.prepare(
-        "SELECT id, name, color, is_preset FROM tags ORDER BY name",
-    )?;
+    let sql = format!("SELECT {} FROM tags ORDER BY name", TAG_COLS);
+    let mut stmt = conn.prepare(&sql)?;
     let tags = stmt
-        .query_map([], |row| {
-            Ok(Tag {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                is_preset: row.get::<_, i32>(3)? != 0,
-            })
-        })?
+        .query_map([], row_to_tag)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(tags)
+}
+
+#[tauri::command]
+pub fn get_pinned_tags(
+    pool: State<'_, Arc<DbPool>>,
+) -> Result<Vec<Tag>, AppError> {
+    let conn = pool.get()?;
+    let sql = format!("SELECT {} FROM tags WHERE is_pinned = 1 ORDER BY name", TAG_COLS);
+    let mut stmt = conn.prepare(&sql)?;
+    let tags = stmt
+        .query_map([], row_to_tag)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(tags)
+}
+
+#[tauri::command]
+pub fn toggle_tag_pin(
+    pool: State<'_, Arc<DbPool>>,
+    tag_id: i64,
+) -> Result<Tag, AppError> {
+    let conn = pool.get()?;
+
+    conn.execute(
+        "UPDATE tags SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END WHERE id = ?1",
+        rusqlite::params![tag_id],
+    )?;
+
+    let tag = conn.query_row(
+        &format!("SELECT {} FROM tags WHERE id = ?1", TAG_COLS),
+        rusqlite::params![tag_id],
+        row_to_tag,
+    )?;
+
+    Ok(tag)
 }
 
 #[tauri::command]
@@ -164,7 +189,6 @@ pub fn delete_tag(
 ) -> Result<(), AppError> {
     let conn = pool.get()?;
 
-    // Check if it's a preset tag
     let is_preset: bool = conn.query_row(
         "SELECT is_preset FROM tags WHERE id = ?1",
         rusqlite::params![tag_id],
@@ -177,7 +201,6 @@ pub fn delete_tag(
         return Err(AppError::Database("Cannot delete preset tags".to_string()));
     }
 
-    // CASCADE handles file_tags deletion
     conn.execute("DELETE FROM tags WHERE id = ?1", rusqlite::params![tag_id])?;
     Ok(())
 }
