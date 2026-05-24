@@ -62,6 +62,7 @@ export default function SettingsPanel({ tags, onTagsChange, onClose, onRefreshLi
 
 function DirectoriesPanel({ onRefreshLibrary, onScanDirectory }: { onRefreshLibrary: () => Promise<void>; onScanDirectory: (path: string) => void }) {
   const [roots, setRoots] = useState<ScanRoot[]>([]);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null);
 
   const loadRoots = useCallback(async () => {
     try {
@@ -84,18 +85,16 @@ function DirectoriesPanel({ onRefreshLibrary, onScanDirectory }: { onRefreshLibr
     try {
       await invoke('add_scan_root', { path: selected });
       await loadRoots();
-      // Immediately scan the directory so files appear
       onScanDirectory(selected);
     } catch (e) {
       alert('Failed to add directory: ' + e);
     }
   };
 
-  const handleRemove = async (id: number, path: string) => {
-    const ok = confirm(`Remove "${path}" from your library?\n\nAll audio files in this directory will be deleted from the library.`);
-    if (!ok) return;
+  const handleRemoveConfirm = async (id: number, path: string) => {
     try {
       await invoke('remove_scan_root', { id, path });
+      setConfirmRemoveId(null);
       await loadRoots();
       await onRefreshLibrary();
     } catch (e) {
@@ -110,21 +109,36 @@ function DirectoriesPanel({ onRefreshLibrary, onScanDirectory }: { onRefreshLibr
         Add folders that WaveBase should watch for audio files. Adding a directory will immediately scan it.
       </p>
       <div className="dir-list">
-        {roots.length === 0 && (
+        {roots.length === 0 && !confirmRemoveId && (
           <span className="settings-empty">No directories added yet.</span>
         )}
         {roots.map((root) => (
-          <div key={root.id} className="dir-row">
-            <span className="dir-path">{root.path}</span>
-            <button
-              className="tool-btn dir-remove-btn"
-              onClick={() => handleRemove(root.id, root.path)}
-              title="Remove from library"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-            </button>
+          <div key={root.id}>
+            <div className="dir-row">
+              <span className="dir-path">{root.path}</span>
+              <button
+                className="tool-btn dir-remove-btn"
+                onClick={() => setConfirmRemoveId(root.id)}
+                title="Remove from library"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            {confirmRemoveId === root.id && (
+              <div className="dir-confirm">
+                <p className="dir-confirm-text">
+                  Remove <strong>{root.path}</strong> from your library? All audio files in this directory will be deleted. This cannot be undone.
+                </p>
+                <div className="dir-confirm-actions">
+                  <button className="tool-btn" onClick={() => setConfirmRemoveId(null)}>Cancel</button>
+                  <button className="tool-btn db-clear-btn db-clear-btn--danger" onClick={() => handleRemoveConfirm(root.id, root.path)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

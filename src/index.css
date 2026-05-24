@@ -701,6 +701,27 @@ html, body {
   margin-top: 4px;
 }
 
+.dir-confirm {
+  padding: 8px 10px;
+  margin: 4px 0 8px 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.dir-confirm-text {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+
+.dir-confirm-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 /* ─── Tags & Filtering ─── */
 .tag-mgmt-list {
   margin-bottom: 10px;
