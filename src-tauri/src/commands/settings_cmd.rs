@@ -62,12 +62,15 @@ pub fn remove_scan_root(
         rusqlite::params![id],
     )?;
     // Delete all audio files whose path starts with this directory
-    let like_pattern = format!("{}%", path.replace('\\', "\\\\"));
+    // Escape _ and % in the path so they aren't treated as LIKE wildcards
+    let escaped = path.replace('\\', "\\\\")
+                     .replace('%', "\\%")
+                     .replace('_', "\\_");
+    let like_pattern = format!("{}%", escaped);
     conn.execute(
-        "DELETE FROM audio_files WHERE path LIKE ?1",
+        "DELETE FROM audio_files WHERE path LIKE ?1 ESCAPE '\\'",
         rusqlite::params![like_pattern],
     )?;
-    // Also clean up orphaned file_tags via CASCADE
     Ok(())
 }
 
