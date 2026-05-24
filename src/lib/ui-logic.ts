@@ -154,5 +154,10 @@ export interface TagInfo {
 export interface TagProgress {
   total: number;
   processed: number;
-  status: 'idle' | 'scanning' | 'complete';
+  status: string;
+}
+
+export interface ScanRoot {
+  id: number;
+  path: string;
 }

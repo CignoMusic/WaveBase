@@ -72,6 +72,12 @@ pub fn run() {
             commands::tags::delete_tag,
             commands::tags::filter_files_by_tag_names,
             commands::tags::get_tag_file_count,
+            // Settings
+            commands::settings_cmd::list_scan_roots,
+            commands::settings_cmd::add_scan_root,
+            commands::settings_cmd::remove_scan_root,
+            commands::settings_cmd::get_database_size,
+            commands::settings_cmd::clear_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
